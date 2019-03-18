@@ -1,0 +1,22 @@
+inspecode:
+  thresholds:
+    num-issues: 0
+  experimental:
+    ignore:
+      - "internal/"
+    runtime:
+      go: 1
+  cpd: default
+  gas: default
+  gofmt: default
+  goimports: default
+  golint: default
+  gosimple: default
+  misspell: default
+  errcheck: default
+  go-test:
+    options:
+      - -cover
+
+docstand:
+  godoc: default
