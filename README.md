@@ -1,0 +1,1 @@
+# appsync-client-go
