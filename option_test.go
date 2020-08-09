@@ -15,7 +15,7 @@ func TestSubscriberID(t *testing.T) {
 	}
 
 	opt := WithSubscriberID(testSubscriberID)
-	opt.Apply(client)
+	opt(client)
 	if client.subscriberID != testSubscriberID {
 		t.Fatal(client.subscriberID)
 	}

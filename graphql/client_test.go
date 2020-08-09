@@ -143,6 +143,48 @@ func TestInternalServerError(t *testing.T) {
 	}
 }
 
+func TestUnauthorizedError(t *testing.T) {
+	server := newUnauthorizedErrorServer()
+	defer server.Close()
+
+	unauthorizedError := http.StatusUnauthorized
+	errors = []interface{}{http.StatusText(unauthorizedError)}
+	want := Response{
+		StatusCode: &unauthorizedError,
+		Data:       nil,
+		Errors:     &errors,
+		Extensions: nil,
+	}
+
+	client := NewClient(server.URL, WithMaxElapsedTime(1*time.Microsecond))
+	got, err := client.Post(http.Header{}, PostRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("got is nil")
+	}
+	checkResponse(t, &want, got)
+
+	resCh := make(chan *Response, 1)
+	errCh := make(chan error, 1)
+	cancel, err := client.PostAsync(http.Header{}, PostRequest{},
+		func(r *Response, err error) {
+			resCh <- r
+			errCh <- err
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancel == nil {
+		t.Fatal("cancel is nil")
+	}
+	checkResponse(t, &want, <-resCh)
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTimeout(t *testing.T) {
 	server := newDelayServer(3 * time.Microsecond)
 	defer server.Close()
