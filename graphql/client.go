@@ -4,15 +4,27 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"time"
 
+	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/cenkalti/backoff"
 )
+
+type httpStatusError struct {
+	StatusCode int
+}
+
+func (e httpStatusError) Error() string {
+	return http.StatusText(e.StatusCode)
+}
+
+func (e httpStatusError) shouldRetry() bool {
+	return e.StatusCode == http.StatusInternalServerError ||
+		e.StatusCode == http.StatusServiceUnavailable
+}
 
 // Client represents a generic GraphQL API client.
 type Client struct {
@@ -20,6 +32,7 @@ type Client struct {
 	timeout        time.Duration
 	maxElapsedTime time.Duration
 	header         http.Header
+	signer         *v4.Signer
 }
 
 // NewClient returns a Client instance.
@@ -31,7 +44,7 @@ func NewClient(endpoint string, opts ...ClientOption) *Client {
 		header:         map[string][]string{},
 	}
 	for _, opt := range opts {
-		opt.Apply(c)
+		opt(c)
 	}
 
 	return c
@@ -65,7 +78,6 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 		return nil, err
 	}
 
-	req.Header.Set("Content-Type", "application/json")
 	for k, v := range c.header {
 		req.Header[k] = v
 	}
@@ -83,61 +95,47 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 		b.MaxElapsedTime = c.maxElapsedTime
 
 		var response Response
-		var errToCallback error
-		_ = backoff.Retry(func() error {
-			r, e := http.DefaultClient.Do(req)
-			if e != nil {
-				log.Println(e)
-				errToCallback = e
-				if e.(*url.Error).Timeout() {
-					if t, ok := http.DefaultTransport.(*http.Transport); ok {
-						t.CloseIdleConnections()
-					}
+		op := func() error {
+			r, err := http.DefaultClient.Do(req)
+			if err != nil {
+				log.Println(err)
+				if err.(*url.Error).Timeout() {
+					http.DefaultClient.CloseIdleConnections()
 				}
-				return nil
+				return backoff.Permanent(err)
 			}
 			defer func() {
-				if e := r.Body.Close(); e != nil {
-					log.Println(e)
+				if err := r.Body.Close(); err != nil {
+					log.Println(err)
 				}
 			}()
 
-			body, e := ioutil.ReadAll(r.Body)
-			if e != nil {
-				log.Println(e)
-				errToCallback = e
-				return nil
-			}
-
 			if r.StatusCode != http.StatusOK {
-				response.StatusCode = &r.StatusCode
-				errors := []interface{}{http.StatusText(r.StatusCode)}
-				response.Errors = &errors
-				// should retry
-				if r.StatusCode == http.StatusInternalServerError || r.StatusCode == http.StatusServiceUnavailable {
-					e := fmt.Errorf(http.StatusText(r.StatusCode))
-					log.Println(e)
-					return e
+				httpErr := httpStatusError{StatusCode: r.StatusCode}
+				if httpErr.shouldRetry() {
+					log.Println(httpErr)
+					return httpErr
 				}
-				return nil
+				return backoff.Permanent(httpErr)
 			}
 
-			if e := json.Unmarshal(body, &response); e != nil {
-				log.Println(e)
-				errToCallback = e
-				return nil
+			if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
+				log.Println(err)
+				return backoff.Permanent(err)
 			}
 			response.StatusCode = &r.StatusCode
 
 			return nil
-		}, b)
-
-		if errToCallback != nil {
-			callback(nil, errToCallback)
-			return
 		}
 
-		callback(&response, nil)
+		switch err := backoff.Retry(op, b).(type) {
+		case nil:
+			callback(&response, nil)
+		case httpStatusError:
+			callback(&Response{&(err.StatusCode), nil, &[]interface{}{err.Error()}, nil}, nil)
+		default:
+			callback(nil, err)
+		}
 	}()
 
 	return cancel, nil

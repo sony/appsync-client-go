@@ -24,7 +24,7 @@ func TestWithAPIKey(t *testing.T) {
 		t.Fatal(client.header)
 	}
 
-	opt.Apply(client)
+	opt(client)
 	if _, ok := client.header["X-Api-Key"]; !ok {
 		t.Fatal(client.header)
 	}
@@ -40,7 +40,7 @@ func TestWithCredential(t *testing.T) {
 		t.Fatal(client.header)
 	}
 
-	opt.Apply(client)
+	opt(client)
 	if _, ok := client.header["Authorization"]; !ok {
 		t.Fatal(client.header)
 	}
@@ -69,7 +69,7 @@ func TestWithHTTPProxy(t *testing.T) {
 		t.Fatal(url)
 	}
 
-	opt.Apply(client)
+	opt(client)
 
 	post, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -94,7 +94,7 @@ func TestWithTimeout(t *testing.T) {
 		t.Fatal(client.timeout)
 	}
 
-	opt.Apply(client)
+	opt(client)
 	if client.timeout != testTimeout {
 		t.Fatal(client.timeout)
 	}
@@ -107,7 +107,7 @@ func TestWithMaxElapsedTime(t *testing.T) {
 		t.Fatal(client.maxElapsedTime)
 	}
 
-	opt.Apply(client)
+	opt(client)
 	if client.maxElapsedTime != testMaxElapsedTime {
 		t.Fatal(client.maxElapsedTime)
 	}

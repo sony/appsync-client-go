@@ -16,7 +16,14 @@ type Extensions struct {
 			Topics []string `json:"topics"`
 			Client string   `json:"client"`
 		} `json:"mqttConnections"`
+		NewSubscriptions map[string]Subscription `json:"newSubscriptions"`
 	} `json:"subscription"`
+}
+
+// Subscription represents AWS AppSync subscription mqtt topic
+type Subscription struct {
+	Topic      string      `json:"topic"`
+	ExpireTime interface{} `json:"expireTime"`
 }
 
 // NewExtensions returns Extensions instance

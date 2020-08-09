@@ -176,6 +176,12 @@ func newSubscriptionHandlerFunc() http.HandlerFunc {
 						"client": uuid.New().String(),
 					},
 				},
+				"newSubscriptions": map[string]interface{}{
+					"subscribeToEcho": map[string]interface{}{
+						"topic":      mqttEchoTopic,
+						"expireTime": nil,
+					},
+				},
 			},
 		}
 		resp := graphql.Response{Extensions: &ext}
