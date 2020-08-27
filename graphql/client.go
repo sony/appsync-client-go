@@ -88,8 +88,8 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 	}
 
 	if dump, err := httputil.DumpRequestOut(req, true); err == nil {
-		fmt.Println("outgoing request:")
-		fmt.Printf("%s\n", string(dump))
+		fmt.Println("Request:")
+		fmt.Println(string(dump))
 	}
 
 	ctx, cancel := context.WithTimeout(req.Context(), c.timeout)
@@ -124,6 +124,11 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 					return httpErr
 				}
 				return backoff.Permanent(httpErr)
+			}
+
+			if dump, err := httputil.DumpResponse(r, true); err == nil {
+				fmt.Println("\nResponse:")
+				fmt.Println(string(dump))
 			}
 
 			if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
