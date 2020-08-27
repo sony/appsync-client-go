@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"time"
 
@@ -76,6 +78,10 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 	if err != nil {
 		log.Println(err)
 		return nil, err
+	}
+	if dump, err := httputil.DumpRequestOut(req, body bool); err == nil {
+		fmt.Println("outgoing request:")
+		fmt.Printf("%q", dump)
 	}
 
 	for k, v := range c.header {

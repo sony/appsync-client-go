@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -75,6 +76,7 @@ func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 			return nil, err
 		}
 		for k, v := range h {
+			fmt.Printf("header = %s: %s", k, v)
 			header[k] = v
 		}
 	}
