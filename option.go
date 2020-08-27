@@ -41,7 +41,7 @@ func WithIAMAuthorization(signer v4.Signer, region, host string) ClientOption {
 // WithTokenAuthorization uses tokens to authorize the request. By default we
 // use the access token, but if shouldUseIDToken is true then use the ID token
 // instead.
-func WithTokenAuthorization(tokensInfo TokensInfo, shouldUseIDToken bool) {
+func WithTokenAuthorization(tokensInfo TokensInfo, shouldUseIDToken bool) ClientOption {
 	return func(c *Client) {
 		c.tokensInfo = &tokensInfo
 		c.useIDToken = shouldUseIDToken
