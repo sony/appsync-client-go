@@ -19,7 +19,6 @@ type Client struct {
 	subscriberID string
 	iamAuth      *iamAuth
 	tokensInfo   *TokensInfo
-	useIDToken   bool
 }
 
 // NewClient returns a Client instance.
@@ -119,11 +118,7 @@ func (c *Client) createHeader(request graphql.PostRequest) (http.Header, error) 
 	if c.tokensInfo != nil {
 		tokensInfo := c.getTokensInfo()
 		// TODO: check for expiry time and refresh tokens
-		authVal := tokensInfo.AccessToken
-		if c.shouldUseIDToken() {
-			authVal = tokensInfo.IDToken
-		}
-		header.Set("Authorization", authVal)
+		header.Set("Authorization", tokensInfo.getAuthToken())
 	}
 
 	return header, nil
@@ -154,11 +149,4 @@ func (c *Client) getTokensInfo() TokensInfo {
 		return TokensInfo{}
 	}
 	return *c.tokensInfo
-}
-
-func (c *Client) shouldUseIDToken() bool {
-	c.RLock()
-	defer c.RUnlock()
-
-	return c.useIDToken
 }

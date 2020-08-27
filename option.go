@@ -11,6 +11,16 @@ type TokensInfo struct {
 	AccessToken, IDToken, RefreshToken string
 	// Info required to refresh the tokens
 	ClientID, Region string
+	// By default use the access token for auth, but if this is true then use ID
+	// token instead
+	ShouldUseIDToken bool
+}
+
+func (t TokensInfo) getAuthToken() string {
+	if t.ShouldUseIDToken {
+		return t.IDToken
+	}
+	return t.AccessToken
 }
 
 // iamAuth contains the information required for IAM authorisation
@@ -41,9 +51,8 @@ func WithIAMAuthorization(signer v4.Signer, region, host string) ClientOption {
 // WithTokenAuthorization uses tokens to authorize the request. By default we
 // use the access token, but if shouldUseIDToken is true then use the ID token
 // instead.
-func WithTokenAuthorization(tokensInfo TokensInfo, shouldUseIDToken bool) ClientOption {
+func WithTokenAuthorization(tokensInfo TokensInfo) ClientOption {
 	return func(c *Client) {
 		c.tokensInfo = &tokensInfo
-		c.useIDToken = shouldUseIDToken
 	}
 }
