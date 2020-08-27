@@ -76,7 +76,7 @@ func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 			return nil, err
 		}
 		for k, v := range h {
-			fmt.Printf("header = %s: %s", k, v)
+			fmt.Printf("header = %s: %s\n", k, v)
 			header[k] = v
 		}
 	}
