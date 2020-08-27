@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
-	"github.com/sony/appsync-client-go/graphql"
+	"github.com/mec07/appsync-client-go/graphql"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )

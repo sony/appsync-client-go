@@ -1,4 +1,4 @@
-module github.com/sony/appsync-client-go
+module github.com/mec07/appsync-client-go
 
 go 1.14
 
