@@ -8,8 +8,8 @@ import (
 // PostRequest is a generic GraphQL POST request body.
 type PostRequest struct {
 	Query         string           `json:"query"`
-	OperationName *string          `json:"operationName"`
-	Variables     *json.RawMessage `json:"variables"`
+	OperationName *string          `json:"operationName,omitempty"`
+	Variables     *json.RawMessage `json:"variables,omitempty"`
 }
 
 // IsQuery checks if the Request is "Query" or not.

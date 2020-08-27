@@ -9,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sony/appsync-client-go/graphql"
+	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
+	"github.com/mec07/appsync-client-go/graphql"
 )
 
 // Client is the AppSync GraphQL API client

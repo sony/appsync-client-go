@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/sony/appsync-client-go/graphql"
+	"github.com/mec07/appsync-client-go/graphql"
 )
 
 // GraphQLClient is the interface to access GraphQL server.

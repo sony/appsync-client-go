@@ -85,6 +85,11 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 		req.Header[k] = v
 	}
 
+	//if dump, err := httputil.DumpRequestOut(req, true); err == nil {
+	//	fmt.Println("outgoing request:")
+	//	fmt.Printf("%s\n", string(dump))
+	//}
+
 	ctx, cancel := context.WithTimeout(req.Context(), c.timeout)
 	req = req.WithContext(ctx)
 
