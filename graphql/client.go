@@ -79,9 +79,9 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 		log.Println(err)
 		return nil, err
 	}
-	if dump, err := httputil.DumpRequestOut(req, body bool); err == nil {
+	if dump, err := httputil.DumpRequestOut(req, true); err == nil {
 		fmt.Println("outgoing request:")
-		fmt.Printf("%q", dump)
+		fmt.Printf("%s\n", string(dump))
 	}
 
 	for k, v := range c.header {
