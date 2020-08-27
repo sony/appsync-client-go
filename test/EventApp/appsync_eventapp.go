@@ -7,8 +7,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/k0kubun/pp"
-	appsync "github.com/sony/appsync-client-go"
-	"github.com/sony/appsync-client-go/graphql"
+	appsync "github.com/mec07/appsync-client-go"
+	"github.com/mec07/appsync-client-go/graphql"
 )
 
 type event struct {

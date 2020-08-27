@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sony/appsync-client-go/graphql"
+	"github.com/mec07/appsync-client-go/graphql"
 )
 
 func TestPostReturnsData(t *testing.T) {
