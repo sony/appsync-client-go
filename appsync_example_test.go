@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/mec07/appsync-client-go/internal/appsynctest"
 
 	appsync "github.com/mec07/appsync-client-go"
 	"github.com/mec07/appsync-client-go/graphql"
+	"github.com/mec07/awstokens"
 )
 
 func ExampleClient_Post_query() {
@@ -17,6 +20,48 @@ func ExampleClient_Post_query() {
 
 	query := `query Message() { message }`
 	client := appsync.NewClient(appsync.NewGraphQLClient(graphql.NewClient(server.URL)))
+	response, err := client.Post(graphql.PostRequest{
+		Query: query,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data := new(string)
+	if err := response.DataAs(data); err != nil {
+		log.Fatalln(err, response)
+	}
+	fmt.Println(*data)
+
+	// Output:
+	// Hello, AppSync!
+}
+
+func ExampleClient_Post_query_with_tokens() {
+	server := appsynctest.NewAppSyncEchoServer()
+	defer server.Close()
+
+	query := `query Message() { message }`
+
+	validToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.StandardClaims{
+		ExpiresAt: time.Now().Add(time.Hour).UTC().Unix(),
+	}).SignedString([]byte("secret signing key"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	config := awstokens.Config{
+		AccessToken:  validToken,
+		IDToken:      "id_token",
+		RefreshToken: "refresh_token",
+	}
+	auth, err := awstokens.NewAuth(config)
+	if err != nil {
+		log.Fatal(err)
+	}
+	client := appsync.NewClient(
+		appsync.NewGraphQLClient(graphql.NewClient(server.URL)),
+		appsync.WithTokenAuthorization(auth),
+	)
 	response, err := client.Post(graphql.PostRequest{
 		Query: query,
 	})
