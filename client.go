@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -12,6 +11,8 @@ import (
 	"github.com/mec07/appsync-client-go/graphql"
 )
 
+// AuthTokenGetter is an interface represeting something that keeps tokens up to
+// date, e.g. github.com/mec07/awstokens.Auth.
 type AuthTokenGetter interface {
 	GetAuthToken() (string, error)
 }
@@ -45,19 +46,16 @@ func (c *Client) signRequest(request graphql.PostRequest) (http.Header, error) {
 	iamAuth := c.getIAMAuth()
 	jsonBytes, err := json.Marshal(request)
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", iamAuth.host, bytes.NewBuffer(jsonBytes))
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 
 	_, err = iamAuth.signer.Sign(req, bytes.NewReader(jsonBytes), "appsync", iamAuth.region, time.Now())
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 	return req.Header, nil
@@ -69,7 +67,6 @@ func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 
 	header, err := c.createHeader(request)
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 
@@ -80,7 +77,6 @@ func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 func (c *Client) PostAsync(request graphql.PostRequest, callback func(*graphql.Response, error)) (context.CancelFunc, error) {
 	header, err := c.createHeader(request)
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 
@@ -111,7 +107,6 @@ func (c *Client) createHeader(request graphql.PostRequest) (http.Header, error) 
 	if c.iamAuth != nil {
 		h, err := c.signRequest(request)
 		if err != nil {
-			log.Println(err)
 			return header, err
 		}
 		for k, v := range h {
@@ -122,7 +117,6 @@ func (c *Client) createHeader(request graphql.PostRequest) (http.Header, error) 
 	if c.auth != nil {
 		token, err := c.auth.GetAuthToken()
 		if err != nil {
-			log.Println(err)
 			return header, err
 		}
 		header.Set("Authorization", token)
