@@ -21,29 +21,58 @@ var (
 	mqttEchoTopic = "echo"
 	schema        = `
 schema {
-  query: Query
-  mutation: Mutation
-  subscription: Subscription
+	query: Query
+	mutation: Mutation
+	subscription: Subscription
 }
 
 type Query {
-  message: String!
+	message: String!
 }
 
 type Mutation {
-  echo(message: String!): String!
+	echo(message: String!): String!
 }
 
 type Subscription {
-  subscribeToEcho: String!
+	subscribeToEcho: String!
 }
 `
 	initialMessage = "Hello, AppSync!"
+
+	gqlwsconnack = `
+{
+	"type": "connection_ack",
+	"payload" : {
+		"connectionTimeoutMs": 300000
+	}
+}
+`
+	gqlwsstartackfmt = `
+{
+	"type": "start_ack",
+	"id" : "%s"
+}
+`
+	gqlwsdatafmt = `
+{
+	"type": "data",
+	"id" : "%s",
+	"payload": %s
+}
+`
+	gqlwscompletefmt = `
+{
+	"type": "complete",
+	"id" : "%s"
+}
+`
 )
 
 type mqttPublisher struct {
-	w        http.ResponseWriter
-	sessions mqttSessions
+	w                http.ResponseWriter
+	mqttSessions     mqttSessions
+	grapqhWsSessions grapqhWsSessions
 }
 
 func (m *mqttPublisher) Header() http.Header {
@@ -51,26 +80,39 @@ func (m *mqttPublisher) Header() http.Header {
 }
 
 func (m *mqttPublisher) Write(payload []byte) (int, error) {
-	go func() {
-		pub := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)
-		pub.TopicName = mqttEchoTopic
-		pub.Payload = payload
-		for sub := range m.sessions {
-			writer, err := sub.NextWriter(websocket.BinaryMessage)
-			if err != nil {
-				log.Println(err)
-				continue
+	if len(m.mqttSessions) != 0 {
+		go func() {
+			pub := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)
+			pub.TopicName = mqttEchoTopic
+			pub.Payload = payload
+			for s := range m.mqttSessions {
+				writer, err := s.NextWriter(websocket.BinaryMessage)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				if err := pub.Write(writer); err != nil {
+					log.Println(err)
+					continue
+				}
+				if err := writer.Close(); err != nil {
+					log.Println(err)
+					continue
+				}
 			}
-			if err := pub.Write(writer); err != nil {
-				log.Println(err)
-				continue
+		}()
+	}
+	if len(m.grapqhWsSessions) != 0 {
+		go func() {
+			for s := range m.grapqhWsSessions {
+				data := json.RawMessage(fmt.Sprintf(gqlwsdatafmt, "id", string(payload)))
+				if err := s.WriteJSON(data); err != nil {
+					log.Println(err)
+					continue
+				}
 			}
-			if err := writer.Close(); err != nil {
-				log.Println(err)
-				continue
-			}
-		}
-	}()
+		}()
+	}
 	return m.w.Write(payload)
 }
 
@@ -95,7 +137,7 @@ func (e *echoResolver) SubscribeToEcho() string {
 	return e.message
 }
 
-func mqttWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn, clientId string), onDisconnected func(ws *websocket.Conn)) {
+func mqttWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn), onDisconnected func(ws *websocket.Conn)) {
 	defer func() {
 		if err := ws.Close(); err != nil {
 			log.Println(err)
@@ -103,13 +145,13 @@ func mqttWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn, clie
 	}()
 
 	for {
-		mt, reader, err := ws.NextReader()
+		mt, r, err := ws.NextReader()
 		if err != nil {
 			log.Println(err)
 			return
 		}
 
-		cp, err := packets.ReadPacket(reader)
+		cp, err := packets.ReadPacket(r)
 		if err != nil {
 			log.Println(err)
 			return
@@ -119,7 +161,7 @@ func mqttWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn, clie
 		switch cp.(type) {
 		case *packets.ConnectPacket:
 			ack = packets.NewControlPacket(packets.Connack)
-			onConnected(ws, cp.(*packets.ConnectPacket).ClientIdentifier)
+			onConnected(ws)
 		case *packets.SubscribePacket:
 			ack = packets.NewControlPacket(packets.Suback)
 			ack.(*packets.SubackPacket).MessageID = cp.(*packets.SubscribePacket).MessageID
@@ -150,15 +192,46 @@ func mqttWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn, clie
 	}
 }
 
+func graphQLWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn), onDisconnected func(ws *websocket.Conn)) {
+	defer func() {
+		if err := ws.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	for {
+		msg := map[string]interface{}{}
+		if err := ws.ReadJSON(&msg); err != nil {
+			return
+		}
+
+		var ack json.RawMessage
+		switch msg["type"].(string) {
+		case "connection_init":
+			ack = json.RawMessage(gqlwsconnack)
+			onConnected(ws)
+		case "start":
+			ack = json.RawMessage(fmt.Sprintf(gqlwsstartackfmt, msg["id"].(string)))
+		case "stop":
+			ack = json.RawMessage(fmt.Sprintf(gqlwscompletefmt, msg["id"].(string)))
+			onDisconnected(ws)
+		}
+		if err := ws.WriteJSON(ack); err != nil {
+			log.Println(err)
+			return
+		}
+	}
+}
+
 func newQueryHandlerFunc(h relay.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h.ServeHTTP(w, r)
 	}
 }
 
-func newMutationHandlerFunc(h relay.Handler, sessions mqttSessions) http.HandlerFunc {
+func newMutationHandlerFunc(h relay.Handler, mqtt mqttSessions, graphqlws grapqhWsSessions) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		h.ServeHTTP(&mqttPublisher{w, sessions}, r)
+		h.ServeHTTP(&mqttPublisher{w, mqtt, graphqlws}, r)
 	}
 }
 
@@ -200,10 +273,16 @@ func newSubscriptionHandlerFunc() http.HandlerFunc {
 }
 
 func isMqttWs(r *http.Request) bool {
-	return r.Method == http.MethodGet && r.Header.Get("Upgrade") == "websocket"
+	return r.Method == http.MethodGet && r.Header.Get("Upgrade") == "websocket" &&
+		r.Header.Get("Sec-Websocket-Protocol") == "mqtt"
 }
 
-func newMqttWsHandlerFunc(onConnected func(ws *websocket.Conn, clientId string), onDisconnected func(ws *websocket.Conn)) http.HandlerFunc {
+func isGraphQLWs(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.Header.Get("Upgrade") == "websocket" &&
+		r.Header.Get("Sec-Websocket-Protocol") == "graphql-ws"
+}
+
+func newMqttWsHandlerFunc(onConnected func(ws *websocket.Conn), onDisconnected func(ws *websocket.Conn)) http.HandlerFunc {
 	upgrader := websocket.Upgrader{}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
@@ -214,18 +293,35 @@ func newMqttWsHandlerFunc(onConnected func(ws *websocket.Conn, clientId string),
 	}
 }
 
-type mqttSessions map[*websocket.Conn]string
+type mqttSessions map[*websocket.Conn]bool
+type grapqhWsSessions map[*websocket.Conn]bool
+
+func newGraphQLWsHandlerFunc(onConnected func(ws *websocket.Conn), onDisconnected func(ws *websocket.Conn)) http.HandlerFunc {
+	upgrader := websocket.Upgrader{}
+	return func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		go graphQLWsSession(ws, onConnected, onDisconnected)
+	}
+}
 
 func newAppSyncEchoHandlerFunc(initialMessage string) http.HandlerFunc {
 	s := graphqlgo.MustParseSchema(schema, &echoResolver{initialMessage})
 	handler := relay.Handler{Schema: s}
-	sessions := make(mqttSessions)
+	mqttSessions := make(mqttSessions)
+	grapqhWsSessions := make(grapqhWsSessions)
 	query := newQueryHandlerFunc(handler)
-	mutation := newMutationHandlerFunc(handler, sessions)
+	mutation := newMutationHandlerFunc(handler, mqttSessions, grapqhWsSessions)
 	subscription := newSubscriptionHandlerFunc()
 	mqttws := newMqttWsHandlerFunc(
-		func(ws *websocket.Conn, clientId string) { sessions[ws] = clientId },
-		func(ws *websocket.Conn) { delete(sessions, ws) },
+		func(ws *websocket.Conn) { mqttSessions[ws] = true },
+		func(ws *websocket.Conn) { delete(mqttSessions, ws) },
+	)
+	graphqlws := newGraphQLWsHandlerFunc(
+		func(ws *websocket.Conn) { grapqhWsSessions[ws] = true },
+		func(ws *websocket.Conn) { delete(grapqhWsSessions, ws) },
 	)
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := ioutil.ReadAll(r.Body)
@@ -239,6 +335,11 @@ func newAppSyncEchoHandlerFunc(initialMessage string) http.HandlerFunc {
 
 		if isMqttWs(r) {
 			mqttws.ServeHTTP(w, r)
+			return
+		}
+
+		if isGraphQLWs(r) {
+			graphqlws.ServeHTTP(w, r)
 			return
 		}
 

@@ -10,7 +10,7 @@ import (
 type PureWebSocketSubscriberOption func(*PureWebSocketSubscriber)
 
 func sanitize(host string) string {
-	if u, err := url.Parse(host); err == nil {
+	if u, err := url.ParseRequestURI(host); err == nil {
 		return u.Host
 	}
 	return host

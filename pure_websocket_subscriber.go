@@ -217,17 +217,12 @@ func newRealtimeWebSocketOperation(onReceive func(response *graphql.Response),
 }
 
 func (r *realtimeWebSocketOperation) readLoop() {
-	r.connackCh = make(chan connectionAckMessage, 1)
 	defer close(r.connackCh)
-
-	r.startackCh = make(chan startAckMessage, 1)
 	defer close(r.startackCh)
-
-	r.completeCh = make(chan completeMessage, 1)
 	defer close(r.completeCh)
 
-	timeout := time.Duration(300000) * time.Millisecond
-	r.ws.SetReadDeadline(time.Now().Add(timeout))
+	const defaultTimeout = time.Duration(300000) * time.Millisecond
+	r.ws.SetReadDeadline(time.Now().Add(defaultTimeout))
 	for {
 		_, b, err := r.ws.ReadMessage()
 		if err != nil {
@@ -252,6 +247,7 @@ func (r *realtimeWebSocketOperation) readLoop() {
 			}
 			r.connackCh <- *connack
 		case "ka":
+			timeout := defaultTimeout
 			if r.connectionTimeoutMs != 0 {
 				timeout = r.connectionTimeoutMs
 			}
@@ -307,6 +303,10 @@ func (r *realtimeWebSocketOperation) connect(realtimeEndpoint string, header, pa
 	}
 
 	r.ws = ws
+	r.connackCh = make(chan connectionAckMessage, 1)
+	r.startackCh = make(chan startAckMessage, 1)
+	r.completeCh = make(chan completeMessage, 1)
+
 	go r.readLoop()
 	return nil
 }
@@ -396,5 +396,6 @@ func (r *realtimeWebSocketOperation) disconnect() {
 	if err := r.ws.Close(); err != nil {
 		log.Println(err)
 	}
+	r.connectionTimeoutMs = 0
 	r.ws = nil
 }
