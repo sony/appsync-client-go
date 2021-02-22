@@ -226,6 +226,73 @@ func (r *realtimeWebSocketOperation) readLoop() {
 		return
 	}
 	for {
+		handlers := map[string]func(b []byte) (finish bool){
+			"connection_ack": func(b []byte) bool {
+				connack := new(connectionAckMessage)
+				if err := json.Unmarshal(b, connack); err != nil {
+					log.Println(err)
+					return true
+				}
+				r.connackCh <- *connack
+				return false
+			},
+			"ka": func(b []byte) bool {
+				timeout := defaultTimeout
+				if r.connectionTimeout != 0 {
+					timeout = r.connectionTimeout
+				}
+				if err := r.ws.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+					log.Println(err)
+					return true
+				}
+				return false
+			},
+			"start_ack": func(b []byte) bool {
+				startack := new(startAckMessage)
+				if err := json.Unmarshal(b, startack); err != nil {
+					log.Println(err)
+					return true
+				}
+				r.startackCh <- *startack
+				return false
+			},
+			"data": func(b []byte) bool {
+				data := new(processingDataMessage)
+				if err := json.Unmarshal(b, data); err != nil {
+					log.Println(err)
+					return true
+				}
+				r.onReceive(&graphql.Response{
+					Data: data.Payload.Data,
+				})
+				return false
+			},
+			"complete": func(b []byte) bool {
+				complete := new(completeMessage)
+				if err := json.Unmarshal(b, complete); err != nil {
+					log.Println(err)
+					return true
+				}
+				r.completeCh <- *complete
+				return true
+			},
+			"error": func(b []byte) bool {
+				em := new(errorMessage)
+				if err := json.Unmarshal(b, em); err != nil {
+					log.Println(err)
+					return true
+				}
+				errors := make([]interface{}, len(em.Payload.Errors))
+				for i, e := range em.Payload.Errors {
+					errors[i] = e
+				}
+				r.onReceive(&graphql.Response{
+					Errors: &errors,
+				})
+				return true
+			},
+		}
+
 		_, b, err := r.ws.ReadMessage()
 		if err != nil {
 			log.Println(err)
@@ -240,62 +307,14 @@ func (r *realtimeWebSocketOperation) readLoop() {
 			log.Println(err)
 			return
 		}
-		switch msg.Type {
-		case "connection_ack":
-			connack := new(connectionAckMessage)
-			if err := json.Unmarshal(b, connack); err != nil {
-				log.Println(err)
-				return
-			}
-			r.connackCh <- *connack
-		case "ka":
-			timeout := defaultTimeout
-			if r.connectionTimeout != 0 {
-				timeout = r.connectionTimeout
-			}
-			if err := r.ws.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-				log.Println(err)
-				return
-			}
-		case "start_ack":
-			startack := new(startAckMessage)
-			if err := json.Unmarshal(b, startack); err != nil {
-				log.Println(err)
-				return
-			}
-			r.startackCh <- *startack
-		case "data":
-			data := new(processingDataMessage)
-			if err := json.Unmarshal(b, data); err != nil {
-				log.Println(err)
-				return
-			}
-			r.onReceive(&graphql.Response{
-				Data: data.Payload.Data,
-			})
-		case "complete":
-			complete := new(completeMessage)
-			if err := json.Unmarshal(b, complete); err != nil {
-				log.Println(err)
-				return
-			}
-			r.completeCh <- *complete
-			return
-		case "error":
-			em := new(errorMessage)
-			if err := json.Unmarshal(b, em); err != nil {
-				log.Println(err)
-			}
-			errors := make([]interface{}, len(em.Payload.Errors))
-			for i, e := range em.Payload.Errors {
-				errors[i] = e
-			}
-			r.onReceive(&graphql.Response{
-				Errors: &errors,
-			})
-			return
-		default:
+
+		handler, ok := handlers[msg.Type]
+		if !ok {
 			log.Println("invalid message received")
+			continue
+		}
+		if handler(b) {
+			return
 		}
 	}
 }
