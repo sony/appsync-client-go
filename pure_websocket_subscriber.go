@@ -277,10 +277,18 @@ func (r *realtimeWebSocketOperation) readLoop() {
 			r.completeCh <- *complete
 			return
 		case "error":
-			e := new(errorMessage)
-			if err := json.Unmarshal(b, e); err != nil {
+			em := new(errorMessage)
+			if err := json.Unmarshal(b, em); err != nil {
 				log.Println(err)
 			}
+			errors := make([]interface{}, len(em.Payload.Errors))
+			for i, e := range em.Payload.Errors {
+				errors[i] = e
+			}
+			r.onReceive(&graphql.Response{
+				Errors: &errors,
+			})
+			return
 		default:
 			log.Println("invalid message received")
 		}
