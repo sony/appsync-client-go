@@ -12,6 +12,7 @@ import (
 	"time"
 
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
+	"github.com/cenkalti/backoff"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/sony/appsync-client-go/graphql"
@@ -304,13 +305,18 @@ func (r *realtimeWebSocketOperation) connect(realtimeEndpoint string, header, pa
 	b64p := base64.StdEncoding.EncodeToString(payload)
 	endpoint := fmt.Sprintf("%s?header=%s&payload=%s", realtimeEndpoint, b64h, b64p)
 
-	ws, _, err := websocket.DefaultDialer.Dial(endpoint, http.Header{"sec-websocket-protocol": []string{"graphql-ws"}})
-	if err != nil {
+	if err := backoff.Retry(func() error {
+		ws, _, err := websocket.DefaultDialer.Dial(endpoint, http.Header{"sec-websocket-protocol": []string{"graphql-ws"}})
+		if err != nil {
+			return err
+		}
+		r.ws = ws
+		return nil
+	}, backoff.NewExponentialBackOff()); err != nil {
 		log.Println(err)
 		return err
 	}
 
-	r.ws = ws
 	r.connackCh = make(chan connectionAckMessage, 1)
 	r.startackCh = make(chan startAckMessage, 1)
 	r.completeCh = make(chan completeMessage, 1)
