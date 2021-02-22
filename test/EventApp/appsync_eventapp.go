@@ -22,11 +22,6 @@ type event struct {
 	Description *string `json:"description"`
 }
 
-type eventConnection struct {
-	Items     []event `json:"items"`
-	NextToken string  `json:"nextToken"`
-}
-
 type subscriber interface {
 	Start() error
 	Stop()
@@ -63,7 +58,7 @@ mutation {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	pp.Println(res)
+	_, _ = pp.Println(res)
 
 	ev := new(event)
 	if err := res.DataAs(ev); err != nil {
@@ -95,7 +90,7 @@ subscription {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		pp.Println(res)
+		_, _ = pp.Println(res)
 
 		ext, err := appsync.NewExtensions(res)
 		if err != nil {
@@ -137,14 +132,14 @@ mutation {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	pp.Println(res)
+	_, _ = pp.Println(res)
 
 	msg, ok := <-ch
 	if !ok {
 		log.Fatal("ch has been closed.")
 	}
 	log.Println("comment received")
-	pp.Print(msg)
+	_, _ = pp.Println(msg)
 
 	log.Println("mutation deleteEvent()")
 	mutation = fmt.Sprintf(`
@@ -163,5 +158,5 @@ mutation {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	pp.Println(res)
+	_, _ = pp.Println(res)
 }

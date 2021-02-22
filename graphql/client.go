@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"time"
 
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/cenkalti/backoff"
 )
 
@@ -32,7 +31,6 @@ type Client struct {
 	timeout        time.Duration
 	maxElapsedTime time.Duration
 	header         http.Header
-	signer         *v4.Signer
 }
 
 // NewClient returns a Client instance.

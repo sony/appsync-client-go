@@ -84,8 +84,6 @@ var (
 type PureWebSocketSubscriber struct {
 	realtimeEndpoint string
 	request          graphql.PostRequest
-	onReceive        func(response *graphql.Response)
-	onConnectionLost func(err error)
 	header           http.Header
 	iamAuth          *struct {
 		signer *v4.Signer
@@ -204,12 +202,12 @@ type realtimeWebSocketOperation struct {
 	onReceive        func(response *graphql.Response)
 	onConnectionLost func(err error)
 
-	ws                  *websocket.Conn
-	connectionTimeoutMs time.Duration
-	subscriptionID      string
-	connackCh           chan connectionAckMessage
-	startackCh          chan startAckMessage
-	completeCh          chan completeMessage
+	ws                *websocket.Conn
+	connectionTimeout time.Duration
+	subscriptionID    string
+	connackCh         chan connectionAckMessage
+	startackCh        chan startAckMessage
+	completeCh        chan completeMessage
 }
 
 func newRealtimeWebSocketOperation(onReceive func(response *graphql.Response),
@@ -223,7 +221,10 @@ func (r *realtimeWebSocketOperation) readLoop() {
 	defer close(r.completeCh)
 
 	const defaultTimeout = time.Duration(300000) * time.Millisecond
-	r.ws.SetReadDeadline(time.Now().Add(defaultTimeout))
+	if err := r.ws.SetReadDeadline(time.Now().Add(defaultTimeout)); err != nil {
+		log.Println(err)
+		return
+	}
 	for {
 		_, b, err := r.ws.ReadMessage()
 		if err != nil {
@@ -249,10 +250,13 @@ func (r *realtimeWebSocketOperation) readLoop() {
 			r.connackCh <- *connack
 		case "ka":
 			timeout := defaultTimeout
-			if r.connectionTimeoutMs != 0 {
-				timeout = r.connectionTimeoutMs
+			if r.connectionTimeout != 0 {
+				timeout = r.connectionTimeout
 			}
-			r.ws.SetReadDeadline(time.Now().Add(timeout))
+			if err := r.ws.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+				log.Println(err)
+				return
+			}
 		case "start_ack":
 			startack := new(startAckMessage)
 			if err := json.Unmarshal(b, startack); err != nil {
@@ -326,7 +330,7 @@ func (r *realtimeWebSocketOperation) connect(realtimeEndpoint string, header, pa
 }
 
 func (r *realtimeWebSocketOperation) connectionInit() error {
-	if r.connectionTimeoutMs != 0 {
+	if r.connectionTimeout != 0 {
 		return errors.New("already connection initialized")
 	}
 
@@ -344,7 +348,7 @@ func (r *realtimeWebSocketOperation) connectionInit() error {
 		return errors.New("connection failed")
 	}
 
-	r.connectionTimeoutMs = time.Duration(connack.Payload.ConnectionTimeoutMs) * time.Millisecond
+	r.connectionTimeout = time.Duration(connack.Payload.ConnectionTimeoutMs) * time.Millisecond
 	return nil
 }
 
@@ -410,6 +414,6 @@ func (r *realtimeWebSocketOperation) disconnect() {
 	if err := r.ws.Close(); err != nil {
 		log.Println(err)
 	}
-	r.connectionTimeoutMs = 0
+	r.connectionTimeout = 0
 	r.ws = nil
 }
