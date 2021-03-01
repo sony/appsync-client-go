@@ -32,7 +32,7 @@ func main() {
 	var (
 		region   = flag.String("region", "", "AppSync API region")
 		url      = flag.String("url", "", "AppSync API URL")
-		protocol = flag.String("subscription protocol", "graphql-ws", "AppSync Subscription protocol(mqtt, graphql-ws)")
+		protocol = flag.String("protocol", "graphql-ws", "AppSync Subscription protocol(mqtt, graphql-ws)")
 	)
 	flag.Parse()
 
