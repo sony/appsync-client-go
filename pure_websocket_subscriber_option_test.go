@@ -1,6 +1,7 @@
 package appsync
 
 import (
+	"strings"
 	"testing"
 
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
@@ -83,6 +84,13 @@ func TestWithOIDC(t *testing.T) {
 				jwt:  "jwt",
 			},
 		},
+		{
+			name: "WithOIDC with trim Bearer Success",
+			args: args{
+				host: "https://example1234567890000.appsync-api.us-east-1.amazonaws.com/graphql",
+				jwt:  "Bearer jwt",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,8 +106,8 @@ func TestWithOIDC(t *testing.T) {
 			if s.header.Get("host") != sanitize(tt.args.host) {
 				t.Errorf("got: %s, want: %s", s.header.Get("host"), tt.args.host)
 			}
-			if s.header.Get("authorization") != tt.args.jwt {
-				t.Errorf("got: %s, want: %s", s.header.Get("authorization"), tt.args.jwt)
+			if s.header.Get("authorization") != strings.TrimPrefix(tt.args.jwt, "Bearer ") {
+				t.Errorf("got: %s, want: %s", s.header.Get("authorization"), strings.TrimPrefix(tt.args.jwt, "Bearer "))
 			}
 		})
 	}

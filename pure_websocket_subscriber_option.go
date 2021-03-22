@@ -2,6 +2,7 @@ package appsync
 
 import (
 	"net/url"
+	"strings"
 
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 )
@@ -28,7 +29,7 @@ func WithAPIKey(host, apiKey string) PureWebSocketSubscriberOption {
 func WithOIDC(host, jwt string) PureWebSocketSubscriberOption {
 	return func(p *PureWebSocketSubscriber) {
 		p.header.Set("host", sanitize(host))
-		p.header.Set("Authorization", jwt)
+		p.header.Set("Authorization", strings.TrimPrefix(jwt, "Bearer "))
 	}
 }
 
