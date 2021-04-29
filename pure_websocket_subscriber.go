@@ -181,15 +181,21 @@ func signRequest(signer *v4.Signer, url, region string, data []byte) (map[string
 		return nil, err
 	}
 
-	return map[string]string{
-		"accept":               req.Header.Get("accept"),
-		"content-encoding":     req.Header.Get("content-encoding"),
-		"content-type":         req.Header.Get("content-type"),
-		"host":                 req.Host,
-		"x-amz-date":           req.Header.Get("x-amz-date"),
-		"X-Amz-Security-Token": req.Header.Get("X-Amz-Security-Token"),
-		"Authorization":        req.Header.Get("Authorization"),
-	}, nil
+	headers := map[string]string{
+		"accept":           req.Header.Get("accept"),
+		"content-encoding": req.Header.Get("content-encoding"),
+		"content-type":     req.Header.Get("content-type"),
+		"host":             req.Host,
+		"x-amz-date":       req.Header.Get("x-amz-date"),
+		"Authorization":    req.Header.Get("Authorization"),
+	}
+
+	token := req.Header.Get("X-Amz-Security-Token")
+	if token != "" {
+		headers["X-Amz-Security-Token"] = token
+	}
+
+	return headers, nil
 }
 
 // Stop ends the subscription.
