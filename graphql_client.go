@@ -11,6 +11,7 @@ import (
 type GraphQLClient interface {
 	Post(header http.Header, request graphql.PostRequest) (*graphql.Response, error)
 	PostAsync(header http.Header, request graphql.PostRequest, callback func(*graphql.Response, error)) (context.CancelFunc, error)
+	GetHTTPClient() *http.Client
 }
 
 type graphQLClient struct {
@@ -28,4 +29,8 @@ func (d *graphQLClient) Post(header http.Header, request graphql.PostRequest) (*
 
 func (d *graphQLClient) PostAsync(header http.Header, request graphql.PostRequest, callback func(*graphql.Response, error)) (context.CancelFunc, error) {
 	return d.client.PostAsync(header, request, callback)
+}
+
+func (d *graphQLClient) GetHTTPClient() *http.Client {
+	return d.client.GetHTTPClient()
 }

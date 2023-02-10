@@ -35,6 +35,10 @@ func (t *testGraphQLAPI) PostAsync(header http.Header, request graphql.PostReque
 	return func() {}, nil
 }
 
+func (t *testGraphQLAPI) GetHTTPClient() *http.Client {
+	return http.DefaultClient
+}
+
 func (t *testGraphQLAPI) GetPostedHeader() http.Header {
 	return t.header
 }

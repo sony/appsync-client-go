@@ -7,14 +7,15 @@ import (
 )
 
 var (
-	testEndpoint       = "dummy"
-	testAPIKey         = "apiKey"
-	testCredential     = "credential"
-	testProxy          = "proxy"
-	testCDID           = "cdid"
-	testCUID           = "cuid"
-	testTimeout        = 1 * time.Second
-	testMaxElapsedTime = 2 * time.Second
+	testEndpoint                         = "dummy"
+	testAPIKey                           = "apiKey"
+	testCredential                       = "credential"
+	testProxy                            = "proxy"
+	testCDID                             = "cdid"
+	testCUID                             = "cuid"
+	testTimeout                          = 1 * time.Second
+	testMaxElapsedTime                   = 2 * time.Second
+	testRoundTripper   http.RoundTripper = &http.Transport{}
 )
 
 func TestWithAPIKey(t *testing.T) {
@@ -110,5 +111,24 @@ func TestWithMaxElapsedTime(t *testing.T) {
 	opt(client)
 	if client.maxElapsedTime != testMaxElapsedTime {
 		t.Fatal(client.maxElapsedTime)
+	}
+}
+
+func TestWithRoundTripper(t *testing.T) {
+	client := NewClient(testEndpoint)
+	opt := WithRoundTripper(testRoundTripper)
+	if client.httpClient.Transport != nil {
+		t.Fatal(client.httpClient.Transport)
+	}
+
+	opt(client)
+	if client.httpClient.Transport != testRoundTripper {
+		t.Fatal(client.httpClient)
+	}
+
+	opt = WithRoundTripper(nil)
+	opt(client)
+	if client.httpClient.Transport != nil {
+		t.Fatal(client.httpClient.Transport)
 	}
 }

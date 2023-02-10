@@ -103,3 +103,8 @@ func (c *Client) PostAsync(request graphql.PostRequest, callback func(*graphql.R
 	}
 	return c.graphQLAPI.PostAsync(header, request, cb)
 }
+
+// GetHTTPClient returns httpClient to use.
+func (c *Client) GetHTTPClient() *http.Client {
+	return c.graphQLAPI.GetHTTPClient()
+}

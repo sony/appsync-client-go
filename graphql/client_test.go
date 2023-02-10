@@ -239,3 +239,14 @@ func TestCancel(t *testing.T) {
 	}
 	checkCanceledError(t, <-errCh)
 }
+
+func TestGetHTTPClient(t *testing.T) {
+	server := newEchoServer(Response{&statusOK, "data", nil, nil})
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	got := client.GetHTTPClient()
+	if got != http.DefaultClient {
+		t.Fatal("cancel is nil")
+	}
+}

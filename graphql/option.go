@@ -51,3 +51,12 @@ func WithMaxElapsedTime(maxElapsedTime time.Duration) ClientOption {
 		c.maxElapsedTime = maxElapsedTime
 	}
 }
+
+// WithRoundTripper return a clientOption configured with the given custom round tripper
+func WithRoundTripper(roundTripper http.RoundTripper) ClientOption {
+	return func(c *Client) {
+		c.httpClient = &http.Client{
+			Transport: roundTripper,
+		}
+	}
+}

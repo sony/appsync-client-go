@@ -31,6 +31,7 @@ type Client struct {
 	timeout        time.Duration
 	maxElapsedTime time.Duration
 	header         http.Header
+	httpClient     *http.Client
 }
 
 // NewClient returns a Client instance.
@@ -40,6 +41,7 @@ func NewClient(endpoint string, opts ...ClientOption) *Client {
 		timeout:        time.Duration(30 * time.Second),
 		maxElapsedTime: time.Duration(20 * time.Second),
 		header:         map[string][]string{},
+		httpClient:     http.DefaultClient,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -94,11 +96,11 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 
 		var response Response
 		op := func() error {
-			r, err := http.DefaultClient.Do(req)
+			r, err := c.httpClient.Do(req)
 			if err != nil {
 				log.Println(err)
 				if err.(*url.Error).Timeout() {
-					http.DefaultClient.CloseIdleConnections()
+					c.httpClient.CloseIdleConnections()
 				}
 				return backoff.Permanent(err)
 			}
@@ -137,4 +139,9 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 	}()
 
 	return cancel, nil
+}
+
+// GetHTTPClient returns httpClient to use.
+func (c *Client) GetHTTPClient() *http.Client {
+	return c.httpClient
 }
