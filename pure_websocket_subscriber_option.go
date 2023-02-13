@@ -17,7 +17,7 @@ func sanitize(host string) string {
 	return host
 }
 
-//WithAPIKey returns a PureWebSocketSubscriberOption configured with the host for the AWS AppSync GraphQL endpoint and API key
+// WithAPIKey returns a PureWebSocketSubscriberOption configured with the host for the AWS AppSync GraphQL endpoint and API key
 func WithAPIKey(host, apiKey string) PureWebSocketSubscriberOption {
 	return func(p *PureWebSocketSubscriber) {
 		p.header.Set("host", sanitize(host))
@@ -25,7 +25,7 @@ func WithAPIKey(host, apiKey string) PureWebSocketSubscriberOption {
 	}
 }
 
-//WithOIDC returns a PureWebSocketSubscriberOption configured with the host for the AWS AppSync GraphQL endpoint and JWT Access Token.
+// WithOIDC returns a PureWebSocketSubscriberOption configured with the host for the AWS AppSync GraphQL endpoint and JWT Access Token.
 func WithOIDC(host, jwt string) PureWebSocketSubscriberOption {
 	return func(p *PureWebSocketSubscriber) {
 		p.header.Set("host", sanitize(host))

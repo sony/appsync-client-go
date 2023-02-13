@@ -60,7 +60,7 @@ func (c *Client) signRequest(request graphql.PostRequest) (http.Header, error) {
 	return req.Header, nil
 }
 
-//Post is a synchronous AppSync GraphQL POST request.
+// Post is a synchronous AppSync GraphQL POST request.
 func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 	defer c.sleepIfNeeded(request)
 	header := http.Header{}
@@ -81,7 +81,7 @@ func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 	return c.graphQLAPI.Post(header, request)
 }
 
-//PostAsync is an asynchronous AppSync GraphQL POST request.
+// PostAsync is an asynchronous AppSync GraphQL POST request.
 func (c *Client) PostAsync(request graphql.PostRequest, callback func(*graphql.Response, error)) (context.CancelFunc, error) {
 	header := http.Header{}
 	if request.IsSubscription() && len(c.subscriberID) > 0 {

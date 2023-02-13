@@ -48,7 +48,7 @@ func NewClient(endpoint string, opts ...ClientOption) *Client {
 	return c
 }
 
-//Post is a synchronous GraphQL POST request.
+// Post is a synchronous GraphQL POST request.
 func (c *Client) Post(header http.Header, request PostRequest) (*Response, error) {
 	type ret struct {
 		response *Response
@@ -62,7 +62,7 @@ func (c *Client) Post(header http.Header, request PostRequest) (*Response, error
 	return r.response, r.err
 }
 
-//PostAsync is an asynchronous GraphQL POST request.
+// PostAsync is an asynchronous GraphQL POST request.
 func (c *Client) PostAsync(header http.Header, request PostRequest, callback func(*Response, error)) (context.CancelFunc, error) {
 	jsonBytes, err := json.Marshal(request)
 	if err != nil {
