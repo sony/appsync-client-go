@@ -32,7 +32,7 @@ func WithHTTPProxy(proxy string) ClientOption {
 			log.Println(err)
 			return
 		}
-		if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		if t, ok := c.http.Transport.(*http.Transport); ok {
 			t.Proxy = http.ProxyURL(proxy)
 		}
 	}

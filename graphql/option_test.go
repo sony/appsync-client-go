@@ -53,9 +53,9 @@ func TestWithHTTPProxy(t *testing.T) {
 	client := NewClient(testEndpoint)
 	opt := WithHTTPProxy(testProxy)
 
-	pre, ok := http.DefaultTransport.(*http.Transport)
+	pre, ok := client.http.Transport.(*http.Transport)
 	if !ok {
-		t.Fatal("http.DefaultTransport is invalid")
+		t.Fatal("client.http.Transport is invalid")
 	}
 	req, err := http.NewRequest("GET", "http://localhost", nil)
 	if err != nil {
@@ -71,9 +71,9 @@ func TestWithHTTPProxy(t *testing.T) {
 
 	opt(client)
 
-	post, ok := http.DefaultTransport.(*http.Transport)
+	post, ok := client.http.Transport.(*http.Transport)
 	if !ok {
-		t.Fatal("http.DefaultTransport is invalid")
+		t.Fatal("client.http.Transport is invalid")
 	}
 	url, err = post.Proxy(req)
 	if err != nil {
