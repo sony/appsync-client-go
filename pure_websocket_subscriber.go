@@ -2,6 +2,7 @@ package appsync
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -90,7 +91,8 @@ type PureWebSocketSubscriber struct {
 		region string
 		host   string
 	}
-	op *realtimeWebSocketOperation
+	cancel context.CancelFunc
+	op     *realtimeWebSocketOperation
 }
 
 // NewPureWebSocketSubscriber returns a PureWebSocketSubscriber instance.
@@ -98,12 +100,14 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 	onReceive func(response *graphql.Response),
 	onConnectionLost func(err error),
 	opts ...PureWebSocketSubscriberOption) *PureWebSocketSubscriber {
+	ctx, cancel := context.WithCancel(context.Background())
 	p := PureWebSocketSubscriber{
 		realtimeEndpoint: realtimeEndpoint,
 		request:          request,
 		header:           http.Header{},
 		iamAuth:          nil,
-		op:               newRealtimeWebSocketOperation(onReceive, onConnectionLost),
+		cancel:           cancel,
+		op:               newRealtimeWebSocketOperation(ctx, onReceive, onConnectionLost),
 	}
 	for _, opt := range opts {
 		opt(&p)
@@ -133,6 +137,7 @@ func (p *PureWebSocketSubscriber) Start() error {
 		log.Println(err)
 		return err
 	}
+
 	if err := p.op.connect(p.realtimeEndpoint, bheader, bpayload); err != nil {
 		return err
 	}
@@ -204,9 +209,17 @@ func (p *PureWebSocketSubscriber) Stop() {
 	p.op.disconnect()
 }
 
+// Abort ends the subscription forcibly.
+func (p *PureWebSocketSubscriber) Abort() {
+	p.cancel()
+	p.op.subscriptionID = ""
+	p.Stop()
+}
+
 const defaultTimeout = time.Duration(300000) * time.Millisecond
 
 type realtimeWebSocketOperation struct {
+	ctx              context.Context
 	onReceive        func(response *graphql.Response)
 	onConnectionLost func(err error)
 
@@ -218,9 +231,9 @@ type realtimeWebSocketOperation struct {
 	completeCh        chan completeMessage
 }
 
-func newRealtimeWebSocketOperation(onReceive func(response *graphql.Response),
+func newRealtimeWebSocketOperation(ctx context.Context, onReceive func(response *graphql.Response),
 	onConnectionLost func(err error)) *realtimeWebSocketOperation {
-	return &realtimeWebSocketOperation{onReceive, onConnectionLost, nil, 0, "", nil, nil, nil}
+	return &realtimeWebSocketOperation{ctx, onReceive, onConnectionLost, nil, 0, "", nil, nil, nil}
 }
 
 func (r *realtimeWebSocketOperation) readLoop() {
@@ -278,13 +291,14 @@ func (r *realtimeWebSocketOperation) connect(realtimeEndpoint string, header, pa
 	endpoint := fmt.Sprintf("%s?header=%s&payload=%s", realtimeEndpoint, b64h, b64p)
 
 	if err := backoff.Retry(func() error {
-		ws, _, err := websocket.DefaultDialer.Dial(endpoint, http.Header{"sec-websocket-protocol": []string{"graphql-ws"}})
+		ws, _, err := websocket.DefaultDialer.DialContext(r.ctx, endpoint, http.Header{"sec-websocket-protocol": []string{"graphql-ws"}})
 		if err != nil {
+			log.Print(err)
 			return err
 		}
 		r.ws = ws
 		return nil
-	}, backoff.NewExponentialBackOff()); err != nil {
+	}, backoff.WithContext(backoff.NewExponentialBackOff(), r.ctx)); err != nil {
 		log.Println(err)
 		return err
 	}
