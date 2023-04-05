@@ -31,6 +31,7 @@ type Client struct {
 	timeout        time.Duration
 	maxElapsedTime time.Duration
 	header         http.Header
+	http           *http.Client
 }
 
 // NewClient returns a Client instance.
@@ -40,7 +41,9 @@ func NewClient(endpoint string, opts ...ClientOption) *Client {
 		timeout:        time.Duration(30 * time.Second),
 		maxElapsedTime: time.Duration(20 * time.Second),
 		header:         map[string][]string{},
+		http:           &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()},
 	}
+
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -48,7 +51,7 @@ func NewClient(endpoint string, opts ...ClientOption) *Client {
 	return c
 }
 
-//Post is a synchronous GraphQL POST request.
+// Post is a synchronous GraphQL POST request.
 func (c *Client) Post(header http.Header, request PostRequest) (*Response, error) {
 	type ret struct {
 		response *Response
@@ -62,7 +65,7 @@ func (c *Client) Post(header http.Header, request PostRequest) (*Response, error
 	return r.response, r.err
 }
 
-//PostAsync is an asynchronous GraphQL POST request.
+// PostAsync is an asynchronous GraphQL POST request.
 func (c *Client) PostAsync(header http.Header, request PostRequest, callback func(*Response, error)) (context.CancelFunc, error) {
 	jsonBytes, err := json.Marshal(request)
 	if err != nil {
@@ -94,11 +97,11 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 
 		var response Response
 		op := func() error {
-			r, err := http.DefaultClient.Do(req)
+			r, err := c.http.Do(req)
 			if err != nil {
 				log.Println(err)
 				if err.(*url.Error).Timeout() {
-					http.DefaultClient.CloseIdleConnections()
+					c.http.CloseIdleConnections()
 				}
 				return backoff.Permanent(err)
 			}
