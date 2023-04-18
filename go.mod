@@ -1,6 +1,6 @@
 module github.com/sony/appsync-client-go
 
-go 1.14
+go 1.20
 
 require (
 	github.com/aws/aws-sdk-go v1.28.11
