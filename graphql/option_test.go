@@ -11,8 +11,6 @@ var (
 	testAPIKey         = "apiKey"
 	testCredential     = "credential"
 	testProxy          = "proxy"
-	testCDID           = "cdid"
-	testCUID           = "cuid"
 	testTimeout        = 1 * time.Second
 	testMaxElapsedTime = 2 * time.Second
 )
@@ -111,4 +109,50 @@ func TestWithMaxElapsedTime(t *testing.T) {
 	if client.maxElapsedTime != testMaxElapsedTime {
 		t.Fatal(client.maxElapsedTime)
 	}
+}
+
+func TestWithHTTPHeader(t *testing.T) {
+	client := NewClient(testEndpoint)
+
+	h := http.Header{}
+	h.Add("custom", "first")
+	h.Add("custom", "second")
+
+	opt := WithHTTPHeader(h)
+	if _, ok := client.header[http.CanonicalHeaderKey("custom")]; ok {
+		t.Fatal(client.header)
+	}
+
+	opt(client)
+	if _, ok := client.header[http.CanonicalHeaderKey("custom")]; !ok {
+		t.Fatal(client.header)
+	}
+	if client.header.Get("custom") != "first" {
+		t.Fatal(client.header)
+	}
+	if client.header[http.CanonicalHeaderKey("custom")][0] != "first" {
+		t.Fatal(client.header)
+	}
+	if client.header[http.CanonicalHeaderKey("custom")][1] != "second" {
+		t.Fatal(client.header)
+	}
+
+	opt = WithHTTPHeader(http.Header{"custom": []string{"third"}})
+	opt(client)
+	if _, ok := client.header[http.CanonicalHeaderKey("custom")]; !ok {
+		t.Fatal(client.header)
+	}
+	if client.header.Get("custom") != "first" {
+		t.Fatal(client.header)
+	}
+	if client.header[http.CanonicalHeaderKey("custom")][0] != "first" {
+		t.Fatal(client.header)
+	}
+	if client.header[http.CanonicalHeaderKey("custom")][1] != "second" {
+		t.Fatal(client.header)
+	}
+	if client.header[http.CanonicalHeaderKey("custom")][2] != "third" {
+		t.Fatal(client.header)
+	}
+
 }

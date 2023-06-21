@@ -78,13 +78,7 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 		log.Println(err)
 		return nil, err
 	}
-
-	for k, v := range c.header {
-		req.Header[k] = v
-	}
-	for k, v := range header {
-		req.Header[k] = v
-	}
+	req.Header = merge(req.Header, merge(c.header, header))
 
 	ctx, cancel := context.WithTimeout(req.Context(), c.timeout)
 	req = req.WithContext(ctx)
@@ -140,4 +134,14 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 	}()
 
 	return cancel, nil
+}
+
+func merge(h1, h2 http.Header) http.Header {
+	h := h1.Clone()
+	for k, vv := range h2 {
+		for _, v := range vv {
+			h.Add(k, v)
+		}
+	}
+	return h
 }
