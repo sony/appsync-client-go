@@ -51,3 +51,10 @@ func WithMaxElapsedTime(maxElapsedTime time.Duration) ClientOption {
 		c.maxElapsedTime = maxElapsedTime
 	}
 }
+
+// WithHTTPHeader returns a ClientOption configured with the given http.Header
+func WithHTTPHeader(header http.Header) ClientOption {
+	return func(c *Client) {
+		c.header = merge(c.header, header)
+	}
+}
