@@ -1,7 +1,6 @@
 package appsync
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -12,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/cenkalti/backoff"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -81,15 +79,19 @@ var (
 	connectionInitMsg = message{Type: "connection_init"}
 )
 
+type pureWebSocketV4Signer interface {
+	Sign(region, url string, payload []byte) (map[string]string, error)
+}
+
 // PureWebSocketSubscriber has pure WebSocket connections and subscription information.
 type PureWebSocketSubscriber struct {
 	realtimeEndpoint string
 	request          graphql.PostRequest
 	header           http.Header
 	iamAuth          *struct {
-		signer *v4.Signer
+		signer pureWebSocketV4Signer
 		region string
-		host   string
+		url    string
 	}
 	cancel context.CancelFunc
 	op     *realtimeWebSocketOperation
@@ -104,8 +106,6 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 	p := PureWebSocketSubscriber{
 		realtimeEndpoint: realtimeEndpoint,
 		request:          request,
-		header:           http.Header{},
-		iamAuth:          nil,
 		cancel:           cancel,
 		op:               newRealtimeWebSocketOperation(ctx, onReceive, onConnectionLost),
 	}
@@ -115,29 +115,38 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 	return &p
 }
 
+func (p *PureWebSocketSubscriber) setupHeaders(url string, body []byte) (map[string]string, error) {
+	if p.iamAuth == nil {
+		headers := map[string]string{}
+		for k := range p.header {
+			headers[k] = p.header.Get(k)
+		}
+		return headers, nil
+	}
+
+	headers, err := p.iamAuth.signer.Sign(p.iamAuth.region, url, body)
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	return headers, nil
+}
+
 // Start starts a new subscription.
 func (p *PureWebSocketSubscriber) Start() error {
 	bpayload := []byte("{}")
-	header := map[string]string{}
-	if p.iamAuth != nil {
-		var err error
-		header, err = signRequest(p.iamAuth.signer, p.iamAuth.host+"/connect", p.iamAuth.region, bpayload)
-		if err != nil {
-			log.Println(err)
-			return err
-		}
-	} else {
-		for k, v := range p.header {
-			header[k] = v[0]
-		}
-	}
 
+	header, err := p.setupHeaders(p.iamAuth.url+"/connect", bpayload)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
 	bheader, err := json.Marshal(header)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
-
 	if err := p.op.connect(p.realtimeEndpoint, bheader, bpayload); err != nil {
 		return err
 	}
@@ -151,56 +160,15 @@ func (p *PureWebSocketSubscriber) Start() error {
 		log.Println(err)
 		return err
 	}
-	authz := map[string]string{}
-	if p.iamAuth != nil {
-		var err error
-		authz, err = signRequest(p.iamAuth.signer, p.iamAuth.host, p.iamAuth.region, brequest)
-		if err != nil {
-			return err
-		}
-	} else {
-		for k, v := range p.header {
-			authz[k] = v[0]
-		}
+	authz, err := p.setupHeaders(p.iamAuth.url, brequest)
+	if err != nil {
+		return err
 	}
 	if err := p.op.start(brequest, authz); err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func signRequest(signer *v4.Signer, url, region string, data []byte) (map[string]string, error) {
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-	req.Header.Add("accept", "application/json, text/javascript")
-	req.Header.Add("content-encoding", "amz-1.0")
-	req.Header.Add("content-type", "application/json; charset=UTF-8")
-
-	_, err = signer.Sign(req, bytes.NewReader(data), "appsync", region, time.Now())
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-
-	headers := map[string]string{
-		"accept":           req.Header.Get("accept"),
-		"content-encoding": req.Header.Get("content-encoding"),
-		"content-type":     req.Header.Get("content-type"),
-		"host":             req.Host,
-		"x-amz-date":       req.Header.Get("x-amz-date"),
-		"Authorization":    req.Header.Get("Authorization"),
-	}
-
-	token := req.Header.Get("X-Amz-Security-Token")
-	if token != "" {
-		headers["X-Amz-Security-Token"] = token
-	}
-
-	return headers, nil
 }
 
 // Stop ends the subscription.
@@ -272,7 +240,7 @@ func (r *realtimeWebSocketOperation) readLoop() {
 
 		handler, ok := handlers[msg.Type]
 		if !ok {
-			log.Println("invalid message received")
+			log.Println("invalid message received: " + msg.Type)
 			continue
 		}
 		if handler(payload) {

@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
+	sdkv2_v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go/aws/session"
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
+	sdkv1_v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/k0kubun/pp"
 	appsync "github.com/sony/appsync-client-go"
 	"github.com/sony/appsync-client-go/graphql"
@@ -30,16 +33,36 @@ type subscriber interface {
 func main() {
 	log.SetFlags(log.Llongfile)
 	var (
-		region   = flag.String("region", "", "AppSync API region")
-		url      = flag.String("url", "", "AppSync API URL")
-		protocol = flag.String("protocol", "graphql-ws", "AppSync Subscription protocol(mqtt, graphql-ws)")
+		region     = flag.String("region", "", "AppSync API region")
+		url        = flag.String("url", "", "AppSync API URL")
+		protocol   = flag.String("protocol", "graphql-ws", "AppSync Subscription protocol(mqtt, graphql-ws)")
+		sdkVersion = flag.String("sdkVersion", "v2", "AWS SDK Version(v1, v2)")
 	)
 	flag.Parse()
 
-	sess := session.Must(session.NewSession())
-	signer := v4.NewSigner(sess.Config.Credentials)
-	client := appsync.NewClient(appsync.NewGraphQLClient(graphql.NewClient(*url)),
-		appsync.WithIAMAuthorization(*signer, *region, *url))
+	opt := func(*appsync.Client) {}
+	sOpt := func(*appsync.PureWebSocketSubscriber) {}
+	switch *sdkVersion {
+	case "v1":
+		sess := session.Must(session.NewSession())
+		signer := sdkv1_v4.NewSigner(sess.Config.Credentials)
+		opt = appsync.WithIAMAuthorizationV1(signer, *region, *url)
+		sOpt = appsync.WithIAMV1(signer, *region, *url)
+	case "v2":
+		ctx := context.TODO()
+		cfg, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		creds, err := cfg.Credentials.Retrieve(ctx)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		signer := sdkv2_v4.NewSigner()
+		opt = appsync.WithIAMAuthorizationV2(signer, ctx, creds, *region, *url)
+		sOpt = appsync.WithIAMV2(signer, ctx, creds, *region, *url)
+	}
+	client := appsync.NewClient(appsync.NewGraphQLClient(graphql.NewClient(*url)), opt)
 
 	log.Println("mutation createEvent()")
 	mutation := `
@@ -105,7 +128,7 @@ subscription {
 		s = appsync.NewPureWebSocketSubscriber(realtime, subreq,
 			func(r *graphql.Response) { ch <- r },
 			func(err error) { log.Println(err) },
-			appsync.WithIAM(signer, *region, *url),
+			sOpt,
 		)
 	default:
 		log.Fatalln("unsupported protocol: " + *protocol)
