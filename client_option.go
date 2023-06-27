@@ -31,8 +31,8 @@ func WithIAMAuthorizationV1(signer *sdkv1_v4.Signer, region, url string) ClientO
 }
 
 // WithIAMAuthorizationV2 returns a ClientOption configured with the given sdk v2 signature version 4 signer.
-func WithIAMAuthorizationV2(signer *sdkv2_v4.Signer, creds *aws.Credentials, region, url string) ClientOption {
+func WithIAMAuthorizationV2(signer *sdkv2_v4.Signer, creds aws.Credentials, region, url string) ClientOption {
 	return func(c *Client) {
-		c.signer = &_signer{signer, region, url, creds}
+		c.signer = &_signer{signer, region, url, &creds}
 	}
 }
