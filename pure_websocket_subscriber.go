@@ -79,22 +79,14 @@ var (
 	connectionInitMsg = message{Type: "connection_init"}
 )
 
-type pureWebSocketV4Signer interface {
-	Sign(region, url string, payload []byte) (map[string]string, error)
-}
-
 // PureWebSocketSubscriber has pure WebSocket connections and subscription information.
 type PureWebSocketSubscriber struct {
 	realtimeEndpoint string
 	request          graphql.PostRequest
 	header           http.Header
-	iamAuth          *struct {
-		signer pureWebSocketV4Signer
-		region string
-		url    string
-	}
-	cancel context.CancelFunc
-	op     *realtimeWebSocketOperation
+	sigv4            sigv4
+	cancel           context.CancelFunc
+	op               *realtimeWebSocketOperation
 }
 
 // NewPureWebSocketSubscriber returns a PureWebSocketSubscriber instance.
@@ -106,6 +98,7 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 	p := PureWebSocketSubscriber{
 		realtimeEndpoint: realtimeEndpoint,
 		request:          request,
+		header:           http.Header{},
 		cancel:           cancel,
 		op:               newRealtimeWebSocketOperation(ctx, onReceive, onConnectionLost),
 	}
@@ -115,8 +108,8 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 	return &p
 }
 
-func (p *PureWebSocketSubscriber) setupHeaders(url string, body []byte) (map[string]string, error) {
-	if p.iamAuth == nil {
+func (p *PureWebSocketSubscriber) setupHeaders(payload []byte) (map[string]string, error) {
+	if p.sigv4 == nil {
 		headers := map[string]string{}
 		for k := range p.header {
 			headers[k] = p.header.Get(k)
@@ -124,7 +117,7 @@ func (p *PureWebSocketSubscriber) setupHeaders(url string, body []byte) (map[str
 		return headers, nil
 	}
 
-	headers, err := p.iamAuth.signer.Sign(p.iamAuth.region, url, body)
+	headers, err := p.sigv4.signWS(payload)
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -136,8 +129,7 @@ func (p *PureWebSocketSubscriber) setupHeaders(url string, body []byte) (map[str
 // Start starts a new subscription.
 func (p *PureWebSocketSubscriber) Start() error {
 	bpayload := []byte("{}")
-
-	header, err := p.setupHeaders(p.iamAuth.url+"/connect", bpayload)
+	header, err := p.setupHeaders(bpayload)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -160,7 +152,7 @@ func (p *PureWebSocketSubscriber) Start() error {
 		log.Println(err)
 		return err
 	}
-	authz, err := p.setupHeaders(p.iamAuth.url, brequest)
+	authz, err := p.setupHeaders(brequest)
 	if err != nil {
 		return err
 	}

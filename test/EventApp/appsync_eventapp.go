@@ -59,8 +59,8 @@ func main() {
 			log.Fatalln(err)
 		}
 		signer := sdkv2_v4.NewSigner()
-		opt = appsync.WithIAMAuthorizationV2(signer, ctx, creds, *region, *url)
-		sOpt = appsync.WithIAMV2(signer, ctx, creds, *region, *url)
+		opt = appsync.WithIAMAuthorizationV2(signer, &creds, *region, *url)
+		sOpt = appsync.WithIAMV2(signer, creds, *region, *url)
 	}
 	client := appsync.NewClient(appsync.NewGraphQLClient(graphql.NewClient(*url)), opt)
 

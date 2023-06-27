@@ -135,19 +135,13 @@ func TestWithIAM(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := NewPureWebSocketSubscriber(realtimeEndpoint, request, onReceive, onConnectionLost)
-			if s.iamAuth != nil {
-				t.Fatal(s.iamAuth)
+			if s.sigv4 != nil {
+				t.Fatal(s.sigv4)
 			}
 			opt := WithIAM(tt.args.signer, tt.args.region, tt.args.host)
 			opt(s)
-			if s.iamAuth.signer != tt.args.signer {
-				t.Errorf("got: %v, want: %v", s.iamAuth.signer, tt.args.signer)
-			}
-			if s.iamAuth.region != tt.args.region {
-				t.Errorf("got: %s, want: %s", s.iamAuth.region, tt.args.region)
-			}
-			if s.iamAuth.host != tt.args.host {
-				t.Errorf("got: %s, want: %s", s.iamAuth.host, s.iamAuth.host)
+			if s.sigv4 == nil {
+				t.Fatal(s.sigv4)
 			}
 		})
 	}

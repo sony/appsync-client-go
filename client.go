@@ -10,15 +10,11 @@ import (
 	"github.com/sony/appsync-client-go/graphql"
 )
 
-type v4Signer interface {
-	Sign(payload []byte) (http.Header, error)
-}
-
 // Client is the AppSync GraphQL API client
 type Client struct {
 	graphQLAPI   GraphQLClient
 	subscriberID string
-	v4Signer     v4Signer
+	signer       sigv4
 }
 
 // NewClient returns a Client instance.
@@ -43,7 +39,7 @@ func (c *Client) setupHeaders(request graphql.PostRequest) (http.Header, error) 
 		header.Set("x-amz-subscriber-id", c.subscriberID)
 	}
 
-	if c.v4Signer == nil {
+	if c.signer == nil {
 		return header, nil
 	}
 
@@ -52,7 +48,7 @@ func (c *Client) setupHeaders(request graphql.PostRequest) (http.Header, error) 
 		log.Println(err)
 		return nil, err
 	}
-	h, err := c.v4Signer.Sign(jsonBytes)
+	h, err := c.signer.signHTTP(jsonBytes)
 	if err != nil {
 		log.Println(err)
 		return nil, err
