@@ -54,8 +54,8 @@ func (s *_signer) signHTTP(body []byte) (http.Header, error) {
 	return req.Header, nil
 }
 
-func (p *_signer) signWS(payload []byte) (map[string]string, error) {
-	url := p.url
+func (s *_signer) signWS(payload []byte) (map[string]string, error) {
+	url := s.url
 	if bytes.Equal(payload, []byte("{}")) {
 		url = url + "/connect"
 	}
@@ -68,9 +68,9 @@ func (p *_signer) signWS(payload []byte) (map[string]string, error) {
 	req.Header.Add("content-encoding", "amz-1.0")
 	req.Header.Add("content-type", "application/json; charset=UTF-8")
 
-	switch signer := p.sdkSigner.(type) {
+	switch signer := s.sdkSigner.(type) {
 	case *sdkv1_v4.Signer:
-		_, err = signer.Sign(req, bytes.NewReader(payload), "appsync", p.region, time.Now())
+		_, err = signer.Sign(req, bytes.NewReader(payload), "appsync", s.region, time.Now())
 		if err != nil {
 			log.Println(err)
 			return nil, err
@@ -86,7 +86,7 @@ func (p *_signer) signWS(payload []byte) (map[string]string, error) {
 		}, nil
 	case *sdkv2_v4.Signer:
 		hash := sha256.Sum256(payload)
-		if err := signer.SignHTTP(context.TODO(), *p.creds, req, hex.EncodeToString(hash[:]), "appsync", p.region, time.Now()); err != nil {
+		if err := signer.SignHTTP(context.TODO(), *s.creds, req, hex.EncodeToString(hash[:]), "appsync", s.region, time.Now()); err != nil {
 			log.Println(err)
 			return nil, err
 		}
