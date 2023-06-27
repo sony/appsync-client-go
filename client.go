@@ -8,7 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
+	sdkv2_v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	sdkv1_v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/sony/appsync-client-go/graphql"
 )
 
@@ -16,8 +17,13 @@ import (
 type Client struct {
 	graphQLAPI   GraphQLClient
 	subscriberID string
-	iamAuth      *struct {
-		signer v4.Signer
+	iamAuthV1    *struct {
+		signer sdkv1_v4.Signer
+		region string
+		host   string
+	}
+	iamAuthV2 *struct {
+		signer sdkv2_v4.Signer
 		region string
 		host   string
 	}
@@ -46,13 +52,13 @@ func (c *Client) signRequest(request graphql.PostRequest) (http.Header, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", c.iamAuth.host, bytes.NewBuffer(jsonBytes))
+	req, err := http.NewRequest("POST", c.iamAuthV1.host, bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 
-	_, err = c.iamAuth.signer.Sign(req, bytes.NewReader(jsonBytes), "appsync", c.iamAuth.region, time.Now())
+	_, err = c.iamAuthV1.signer.Sign(req, bytes.NewReader(jsonBytes), "appsync", c.iamAuthV1.region, time.Now())
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -68,7 +74,7 @@ func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 		header.Set("x-amz-subscriber-id", c.subscriberID)
 	}
 
-	if c.iamAuth != nil {
+	if c.iamAuthV1 != nil {
 		h, err := c.signRequest(request)
 		if err != nil {
 			log.Println(err)
@@ -91,7 +97,7 @@ func (c *Client) PostAsync(request graphql.PostRequest, callback func(*graphql.R
 		c.sleepIfNeeded(request)
 		callback(g, err)
 	}
-	if c.iamAuth != nil {
+	if c.iamAuthV1 != nil {
 		h, err := c.signRequest(request)
 		if err != nil {
 			log.Println(err)
