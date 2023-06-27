@@ -140,10 +140,12 @@ func (p *PureWebSocketSubscriber) Start() error {
 		return err
 	}
 	if err := p.op.connect(p.realtimeEndpoint, bheader, bpayload); err != nil {
+		log.Println(err)
 		return err
 	}
 
 	if err := p.op.connectionInit(); err != nil {
+		log.Println(err)
 		return err
 	}
 
@@ -154,9 +156,11 @@ func (p *PureWebSocketSubscriber) Start() error {
 	}
 	authz, err := p.setupHeaders(brequest)
 	if err != nil {
+		log.Println(err)
 		return err
 	}
 	if err := p.op.start(brequest, authz); err != nil {
+		log.Println(err)
 		return err
 	}
 
