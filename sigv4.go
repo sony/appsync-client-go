@@ -29,21 +29,21 @@ type _signer struct {
 	creds *aws.Credentials
 }
 
-func (s *_signer) signHTTP(body []byte) (http.Header, error) {
-	req, err := http.NewRequest("POST", s.url, bytes.NewBuffer(body))
+func (s *_signer) signHTTP(payload []byte) (http.Header, error) {
+	req, err := http.NewRequest("POST", s.url, bytes.NewBuffer(payload))
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 	switch signer := s.sdkSigner.(type) {
 	case *sdkv1_v4.Signer:
-		_, err = signer.Sign(req, bytes.NewReader(body), "appsync", s.region, time.Now())
+		_, err = signer.Sign(req, bytes.NewReader(payload), "appsync", s.region, time.Now())
 		if err != nil {
 			log.Println(err)
 			return nil, err
 		}
 	case *sdkv2_v4.Signer:
-		hash := sha256.Sum256(body)
+		hash := sha256.Sum256(payload)
 		if err := signer.SignHTTP(context.TODO(), *s.creds, req, hex.EncodeToString(hash[:]), "appsync", s.region, time.Now()); err != nil {
 			log.Println(err)
 			return nil, err
