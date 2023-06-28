@@ -4,7 +4,9 @@ import (
 	"net/url"
 	"strings"
 
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	sdkv2_v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	sdkv1_v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 )
 
 // PureWebSocketSubscriberOption represents options for an PureWebSocketSubscriber.
@@ -34,12 +36,22 @@ func WithOIDC(host, jwt string) PureWebSocketSubscriberOption {
 }
 
 // WithIAM returns a PureWebSocketSubscriberOption configured with the signature version 4 signer, the region and the host for the AWS AppSync GraphQL endpoint.
-func WithIAM(signer *v4.Signer, region, host string) PureWebSocketSubscriberOption {
+//
+// Deprecated: for backward compatibility.
+func WithIAM(signer *sdkv1_v4.Signer, region, host string) PureWebSocketSubscriberOption {
+	return WithIAMV1(signer, region, host)
+}
+
+// WithIAMV1 returns a PureWebSocketSubscriberOption configured with the sdk v1 signature version 4 signer, the region and the url for the AWS AppSync GraphQL endpoint.
+func WithIAMV1(signer *sdkv1_v4.Signer, region, url string) PureWebSocketSubscriberOption {
 	return func(p *PureWebSocketSubscriber) {
-		p.iamAuth = &struct {
-			signer *v4.Signer
-			region string
-			host   string
-		}{signer, region, host}
+		p.sigv4 = &_signer{signer, region, url, nil}
+	}
+}
+
+// WithIAMV2 returns a PureWebSocketSubscriberOption configured with the sdk v2 signature version 4 signer, the credentials, the region and the url for the AWS AppSync GraphQL endpoint.
+func WithIAMV2(signer *sdkv2_v4.Signer, creds aws.Credentials, region, url string) PureWebSocketSubscriberOption {
+	return func(p *PureWebSocketSubscriber) {
+		p.sigv4 = &_signer{signer, region, url, &creds}
 	}
 }

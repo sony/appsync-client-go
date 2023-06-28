@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
+	sdkv2_v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go/aws/session"
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
+	sdkv1_v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/k0kubun/pp"
 	appsync "github.com/sony/appsync-client-go"
 	"github.com/sony/appsync-client-go/graphql"
@@ -30,18 +33,71 @@ type subscriber interface {
 func main() {
 	log.SetFlags(log.Llongfile)
 	var (
-		region   = flag.String("region", "", "AppSync API region")
-		url      = flag.String("url", "", "AppSync API URL")
-		protocol = flag.String("protocol", "graphql-ws", "AppSync Subscription protocol(mqtt, graphql-ws)")
+		region     = flag.String("region", "", "AppSync API region")
+		url        = flag.String("url", "", "AppSync API URL")
+		protocol   = flag.String("protocol", "graphql-ws", "AppSync Subscription protocol(mqtt, graphql-ws)")
+		sdkVersion = flag.String("sdkVersion", "v2", "AWS SDK Version(v1, v2)")
 	)
 	flag.Parse()
 
-	sess := session.Must(session.NewSession())
-	signer := v4.NewSigner(sess.Config.Credentials)
-	client := appsync.NewClient(appsync.NewGraphQLClient(graphql.NewClient(*url)),
-		appsync.WithIAMAuthorization(*signer, *region, *url))
+	opt := func(*appsync.Client) {}
+	sOpt := func(*appsync.PureWebSocketSubscriber) {}
+	switch *sdkVersion {
+	case "v1":
+		sess := session.Must(session.NewSession())
+		signer := sdkv1_v4.NewSigner(sess.Config.Credentials)
+		opt = appsync.WithIAMAuthorizationV1(signer, *region, *url)
+		sOpt = appsync.WithIAMV1(signer, *region, *url)
+	case "v2":
+		ctx := context.TODO()
+		cfg, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		creds, err := cfg.Credentials.Retrieve(ctx)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		signer := sdkv2_v4.NewSigner()
+		opt = appsync.WithIAMAuthorizationV2(signer, creds, *region, *url)
+		sOpt = appsync.WithIAMV2(signer, creds, *region, *url)
+	}
+	client := appsync.NewClient(appsync.NewGraphQLClient(graphql.NewClient(*url)), opt)
 
 	log.Println("mutation createEvent()")
+	event := createEvent(client)
+
+	log.Println("subscription subscribeToEventComments()")
+	ch := make(chan *graphql.Response)
+	defer close(ch)
+	var s subscriber
+	switch *protocol {
+	case "mqtt":
+		s = mqttSubscribeToEventComments(client, event, ch)
+	case "graphql-ws":
+		s = wsSubscribeToEventComments(*url, sOpt, event, ch)
+	default:
+		log.Fatalln("unsupported protocol: " + *protocol)
+	}
+	if err := s.Start(); err != nil {
+		log.Fatalln(err)
+	}
+	defer s.Stop()
+
+	log.Println("mutation commentOnEvent()")
+	commentOnEvent(client, event)
+	msg, ok := <-ch
+	if !ok {
+		log.Fatal("ch has been closed.")
+	}
+	log.Println("comment received")
+	_, _ = pp.Println(msg)
+
+	log.Println("mutation deleteEvent()")
+	deleteEvent(client, event)
+}
+
+func createEvent(c *appsync.Client) *event {
 	mutation := `
 mutation {
 	createEvent(name: "name", when: "when", where: "where", description: "description") {
@@ -52,7 +108,7 @@ mutation {
 		description
     }
 }`
-	res, err := client.Post(graphql.PostRequest{
+	res, err := c.Post(graphql.PostRequest{
 		Query: mutation,
 	})
 	if err != nil {
@@ -64,8 +120,10 @@ mutation {
 	if err := res.DataAs(ev); err != nil {
 		log.Fatalln(err)
 	}
+	return ev
+}
 
-	log.Println("subscription subscribeToEventComments()")
+func mqttSubscribeToEventComments(c *appsync.Client, e *event, ch chan *graphql.Response) subscriber {
 	subscription := fmt.Sprintf(`
 subscription {
 	subscribeToEventComments(eventId: "%s"){
@@ -74,50 +132,50 @@ subscription {
 		content
 		createdAt
 	}
-}`, ev.ID)
-
-	var s subscriber
+}`, e.ID)
 	subreq := graphql.PostRequest{
 		Query: subscription,
 	}
-
-	ch := make(chan *graphql.Response)
-	defer close(ch)
-
-	switch *protocol {
-	case "mqtt":
-		res, err = client.Post(subreq)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		_, _ = pp.Println(res)
-
-		ext, err := appsync.NewExtensions(res)
-		if err != nil {
-			log.Fatalln(err)
-		}
-
-		s = appsync.NewSubscriber(*ext,
-			func(r *graphql.Response) { ch <- r },
-			func(err error) { log.Println(err) })
-	case "graphql-ws":
-		realtime := strings.Replace(strings.Replace(*url, "https", "wss", 1), "appsync-api", "appsync-realtime-api", 1)
-		s = appsync.NewPureWebSocketSubscriber(realtime, subreq,
-			func(r *graphql.Response) { ch <- r },
-			func(err error) { log.Println(err) },
-			appsync.WithIAM(signer, *region, *url),
-		)
-	default:
-		log.Fatalln("unsupported protocol: " + *protocol)
-	}
-
-	if err := s.Start(); err != nil {
+	res, err := c.Post(subreq)
+	if err != nil {
 		log.Fatalln(err)
 	}
-	defer s.Stop()
+	_, _ = pp.Println(res)
 
-	log.Println("mutation commentOnEvent()")
-	mutation = fmt.Sprintf(`
+	ext, err := appsync.NewExtensions(res)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	return appsync.NewSubscriber(*ext,
+		func(r *graphql.Response) { ch <- r },
+		func(err error) { log.Println(err) })
+
+}
+
+func wsSubscribeToEventComments(url string, opt appsync.PureWebSocketSubscriberOption, e *event, ch chan *graphql.Response) subscriber {
+	subscription := fmt.Sprintf(`
+subscription {
+	subscribeToEventComments(eventId: "%s"){
+		eventId
+		commentId
+		content
+		createdAt
+	}
+}`, e.ID)
+	subreq := graphql.PostRequest{
+		Query: subscription,
+	}
+	realtime := strings.Replace(strings.Replace(url, "https", "wss", 1), "appsync-api", "appsync-realtime-api", 1)
+	return appsync.NewPureWebSocketSubscriber(realtime, subreq,
+		func(r *graphql.Response) { ch <- r },
+		func(err error) { log.Println(err) },
+		opt,
+	)
+}
+
+func commentOnEvent(c *appsync.Client, e *event) {
+	mutation := fmt.Sprintf(`
 mutation {
 	commentOnEvent(eventId: "%s", content: "content", createdAt: "%s"){
 		eventId
@@ -125,24 +183,18 @@ mutation {
 		content
 		createdAt
     }
-}`, ev.ID, time.Now().String())
-	res, err = client.Post(graphql.PostRequest{
+}`, e.ID, time.Now().String())
+	res, err := c.Post(graphql.PostRequest{
 		Query: mutation,
 	})
 	if err != nil {
 		log.Fatalln(err)
 	}
 	_, _ = pp.Println(res)
+}
 
-	msg, ok := <-ch
-	if !ok {
-		log.Fatal("ch has been closed.")
-	}
-	log.Println("comment received")
-	_, _ = pp.Println(msg)
-
-	log.Println("mutation deleteEvent()")
-	mutation = fmt.Sprintf(`
+func deleteEvent(c *appsync.Client, e *event) {
+	mutation := fmt.Sprintf(`
 mutation {
 	deleteEvent(id: "%s"){
             id
@@ -151,8 +203,8 @@ mutation {
 			where
 			description
     }
-}`, ev.ID)
-	res, err = client.Post(graphql.PostRequest{
+}`, e.ID)
+	res, err := c.Post(graphql.PostRequest{
 		Query: mutation,
 	})
 	if err != nil {

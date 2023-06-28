@@ -7,16 +7,22 @@ inspecode:
       - "**/*_test.go"
     runtime:
       go: 1.20
-    env:
-      GO111MODULE: on
   cpd: default
+  dependency-check:
+    machine:
+      cpu: 2
+  errcheck: default
+  ineffassign: default
   gofmt: default
   goimports: default
   golint: default
-  misspell: default
-  gosec: default
-  errcheck: default
-  staticcheck: default
+  gosec:
+    machine:
+      cpu: 2
   go-test:
     options:
       - -cover
+  misspell: default
+  staticcheck:
+    machine:
+      cpu: 2

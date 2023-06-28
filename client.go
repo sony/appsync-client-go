@@ -1,14 +1,12 @@
 package appsync
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"time"
 
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/sony/appsync-client-go/graphql"
 )
 
@@ -16,11 +14,7 @@ import (
 type Client struct {
 	graphQLAPI   GraphQLClient
 	subscriberID string
-	iamAuth      *struct {
-		signer v4.Signer
-		region string
-		host   string
-	}
+	signer       sigv4
 }
 
 // NewClient returns a Client instance.
@@ -39,67 +33,55 @@ func (c *Client) sleepIfNeeded(request graphql.PostRequest) {
 	}
 }
 
-func (c *Client) signRequest(request graphql.PostRequest) (http.Header, error) {
-	jsonBytes, err := json.Marshal(request)
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", c.iamAuth.host, bytes.NewBuffer(jsonBytes))
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-
-	_, err = c.iamAuth.signer.Sign(req, bytes.NewReader(jsonBytes), "appsync", c.iamAuth.region, time.Now())
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-	return req.Header, nil
-}
-
-// Post is a synchronous AppSync GraphQL POST request.
-func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
-	defer c.sleepIfNeeded(request)
+func (c *Client) setupHeaders(request graphql.PostRequest) (http.Header, error) {
 	header := http.Header{}
 	if request.IsSubscription() && len(c.subscriberID) > 0 {
 		header.Set("x-amz-subscriber-id", c.subscriberID)
 	}
 
-	if c.iamAuth != nil {
-		h, err := c.signRequest(request)
-		if err != nil {
-			log.Println(err)
-			return nil, err
+	if c.signer == nil {
+		return header, nil
+	}
+
+	jsonBytes, err := json.Marshal(request)
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	h, err := c.signer.signHTTP(jsonBytes)
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	for k, vv := range h {
+		for _, v := range vv {
+			header.Add(k, v)
 		}
-		for k, v := range h {
-			header[k] = v
-		}
+	}
+	return header, nil
+}
+
+// Post is a synchronous AppSync GraphQL POST request.
+func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
+	defer c.sleepIfNeeded(request)
+	header, err := c.setupHeaders(request)
+	if err != nil {
+		log.Println(err)
+		return nil, err
 	}
 	return c.graphQLAPI.Post(header, request)
 }
 
 // PostAsync is an asynchronous AppSync GraphQL POST request.
 func (c *Client) PostAsync(request graphql.PostRequest, callback func(*graphql.Response, error)) (context.CancelFunc, error) {
-	header := http.Header{}
-	if request.IsSubscription() && len(c.subscriberID) > 0 {
-		header.Set("x-amz-subscriber-id", c.subscriberID)
+	header, err := c.setupHeaders(request)
+	if err != nil {
+		log.Println(err)
+		return nil, err
 	}
 	cb := func(g *graphql.Response, err error) {
 		c.sleepIfNeeded(request)
 		callback(g, err)
-	}
-	if c.iamAuth != nil {
-		h, err := c.signRequest(request)
-		if err != nil {
-			log.Println(err)
-			return nil, err
-		}
-		for k, v := range h {
-			header[k] = v
-		}
 	}
 	return c.graphQLAPI.PostAsync(header, request, cb)
 }
