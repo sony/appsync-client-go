@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -222,7 +222,7 @@ func (r *realtimeWebSocketOperation) readLoop() {
 		_, payload, err := r.ws.ReadMessage()
 		if err != nil {
 			log.Println(err)
-			if strings.Contains(err.Error(), "i/o timeout") {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				r.onConnectionLost(err)
 			}
 			return
