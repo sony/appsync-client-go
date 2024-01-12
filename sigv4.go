@@ -64,6 +64,7 @@ func (s *_signer) signWS(payload []byte) (map[string]string, error) {
 		log.Println(err)
 		return nil, err
 	}
+
 	req.Header.Add("accept", "application/json, text/javascript")
 	req.Header.Add("content-encoding", "amz-1.0")
 	req.Header.Add("content-type", "application/json; charset=UTF-8")
@@ -90,16 +91,23 @@ func (s *_signer) signWS(payload []byte) (map[string]string, error) {
 			log.Println(err)
 			return nil, err
 		}
-		return map[string]string{
-			"accept":               req.Header.Get("accept"),
-			"content-encoding":     req.Header.Get("content-encoding"),
-			"content-length":       strconv.FormatInt(req.ContentLength, 10),
-			"content-type":         req.Header.Get("content-type"),
-			"host":                 req.Host,
-			"x-amz-date":           req.Header.Get("x-amz-date"),
-			"X-Amz-Security-Token": req.Header.Get("X-Amz-Security-Token"),
-			"Authorization":        req.Header.Get("Authorization"),
-		}, nil
+
+		headers := map[string]string{
+			"accept":           req.Header.Get("accept"),
+			"content-encoding": req.Header.Get("content-encoding"),
+			"content-type":     req.Header.Get("content-type"),
+			"content-length":   strconv.FormatInt(req.ContentLength, 10),
+			"host":             req.Host,
+			"x-amz-date":       req.Header.Get("x-amz-date"),
+			"Authorization":    req.Header.Get("Authorization"),
+		}
+
+		token := req.Header.Get("X-Amz-Security-Token")
+		if token != "" {
+			headers["X-Amz-Security-Token"] = token
+		}
+
+		return headers, nil
 	}
 	return map[string]string{}, errors.New("unsupported signer")
 }
