@@ -30,22 +30,25 @@ type _signer struct {
 }
 
 func (s *_signer) signHTTP(payload []byte) (http.Header, error) {
+	slog.Debug("signing http request", "payload", string(payload))
 	req, err := http.NewRequest("POST", s.url, bytes.NewBuffer(payload))
 	if err != nil {
-		slog.Error("error creating request", "error", err)
+		slog.Error("error creating signing request", "error", err)
 		return nil, err
 	}
 	switch signer := s.sdkSigner.(type) {
 	case *sdkv1_v4.Signer:
+		slog.Debug("signing request using sdk v1")
 		_, err = signer.Sign(req, bytes.NewReader(payload), "appsync", s.region, time.Now())
 		if err != nil {
-			slog.Error("error signing request", "error", err)
+			slog.Error("error signing request using sdk v1", "error", err)
 			return nil, err
 		}
 	case *sdkv2_v4.Signer:
+		slog.Debug("signing request using sdk v2")
 		hash := sha256.Sum256(payload)
 		if err := signer.SignHTTP(context.TODO(), *s.creds, req, hex.EncodeToString(hash[:]), "appsync", s.region, time.Now()); err != nil {
-			slog.Error("error signing request", "error", err)
+			slog.Error("error signing request using sdk v2", "error", err)
 			return nil, err
 		}
 	default:
@@ -55,10 +58,12 @@ func (s *_signer) signHTTP(payload []byte) (http.Header, error) {
 }
 
 func (s *_signer) signWS(payload []byte) (map[string]string, error) {
+	slog.Debug("signing ws", "payload", string(payload))
 	url := s.url
 	if bytes.Equal(payload, []byte("{}")) {
 		url = url + "/connect"
 	}
+	slog.Debug("signing ws url", "url", url)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
 		slog.Error("error creating request", "error", err)
@@ -71,6 +76,7 @@ func (s *_signer) signWS(payload []byte) (map[string]string, error) {
 
 	switch signer := s.sdkSigner.(type) {
 	case *sdkv1_v4.Signer:
+		slog.Debug("signing ws using sdk v1")
 		_, err = signer.Sign(req, bytes.NewReader(payload), "appsync", s.region, time.Now())
 		if err != nil {
 			slog.Error("error signing request", "error", err)
@@ -86,6 +92,7 @@ func (s *_signer) signWS(payload []byte) (map[string]string, error) {
 			"X-Amz-Security-Token": req.Header.Get("X-Amz-Security-Token"),
 		}, nil
 	case *sdkv2_v4.Signer:
+		slog.Debug("signing ws using sdk v2")
 		hash := sha256.Sum256(payload)
 		if err := signer.SignHTTP(context.TODO(), *s.creds, req, hex.EncodeToString(hash[:]), "appsync", s.region, time.Now()); err != nil {
 			slog.Error("error signing request", "error", err)
@@ -101,12 +108,11 @@ func (s *_signer) signWS(payload []byte) (map[string]string, error) {
 			"x-amz-date":       req.Header.Get("x-amz-date"),
 			"Authorization":    req.Header.Get("Authorization"),
 		}
-
 		token := req.Header.Get("X-Amz-Security-Token")
 		if token != "" {
 			headers["X-Amz-Security-Token"] = token
 		}
-
+		slog.Debug("signed ws headers", "headers", headers)
 		return headers, nil
 	}
 	return map[string]string{}, errors.New("unsupported signer")

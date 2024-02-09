@@ -94,6 +94,7 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 	onReceive func(response *graphql.Response),
 	onConnectionLost func(err error),
 	opts ...PureWebSocketSubscriberOption) *PureWebSocketSubscriber {
+	slog.Debug("creating new pure websocket subscriber", "realtimeEndpoint", realtimeEndpoint, "request", request)
 	ctx, cancel := context.WithCancel(context.Background())
 	p := PureWebSocketSubscriber{
 		realtimeEndpoint: realtimeEndpoint,
@@ -109,7 +110,9 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 }
 
 func (p *PureWebSocketSubscriber) setupHeaders(payload []byte) (map[string]string, error) {
+	slog.Debug("setting up headers", "payload", string(payload))
 	if p.sigv4 == nil {
+		slog.Debug("no sigV4")
 		headers := map[string]string{}
 		for k := range p.header {
 			headers[k] = p.header.Get(k)
@@ -117,6 +120,7 @@ func (p *PureWebSocketSubscriber) setupHeaders(payload []byte) (map[string]strin
 		return headers, nil
 	}
 
+	slog.Debug("signing ws headers", "payload", string(payload))
 	headers, err := p.sigv4.signWS(payload)
 	if err != nil {
 		slog.Error("error signing WS headers", "error", err)

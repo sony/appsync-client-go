@@ -30,6 +30,7 @@ const (
 
 // NewSubscriber returns a new Subscriber instance.
 func NewSubscriber(extensions Extensions, callback func(response *graphql.Response), onConnectionLost func(err error)) *Subscriber {
+	slog.Debug("creating new subscriber", "extensions", extensions)
 	if len(extensions.Subscription.MqttConnections) == 0 {
 		slog.Warn("There is no mqtt connections.", "extensions", extensions)
 		return nil
@@ -41,6 +42,7 @@ func NewSubscriber(extensions Extensions, callback func(response *graphql.Respon
 			return ""
 		}
 		for _, v := range extensions.Subscription.NewSubscriptions {
+			slog.Debug("topics", "topic", v.Topic)
 			return v.Topic
 		}
 		return ""
@@ -95,6 +97,7 @@ func (r *rwBool) store(b bool) {
 
 // Start starts a new subscription.
 func (s *Subscriber) Start() error {
+	slog.Debug("starting new subscriber", "clientID", s.clientID, "url", s.url, "topic", s.topic)
 	opts := MQTT.NewClientOptions().
 		AddBroker(s.url).
 		SetClientID(s.clientID).
@@ -159,6 +162,7 @@ func (s *Subscriber) Start() error {
 
 // Stop ends the subscription.
 func (s *Subscriber) Stop() {
+	slog.Debug("stopping subscriber", "topic", s.topic)
 	if s.mqtt == nil {
 		return
 	}
