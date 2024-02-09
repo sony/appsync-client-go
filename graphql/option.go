@@ -1,7 +1,7 @@
 package graphql
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -29,7 +29,7 @@ func WithHTTPProxy(proxy string) ClientOption {
 	return func(c *Client) {
 		proxy, err := url.Parse(proxy)
 		if err != nil {
-			log.Println(err)
+			slog.Warn("unable to parse proxy URL", "error", err)
 			return
 		}
 		if t, ok := c.http.Transport.(*http.Transport); ok {

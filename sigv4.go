@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -32,20 +32,20 @@ type _signer struct {
 func (s *_signer) signHTTP(payload []byte) (http.Header, error) {
 	req, err := http.NewRequest("POST", s.url, bytes.NewBuffer(payload))
 	if err != nil {
-		log.Println(err)
+		slog.Error("error creating request", "error", err)
 		return nil, err
 	}
 	switch signer := s.sdkSigner.(type) {
 	case *sdkv1_v4.Signer:
 		_, err = signer.Sign(req, bytes.NewReader(payload), "appsync", s.region, time.Now())
 		if err != nil {
-			log.Println(err)
+			slog.Error("error signing request", "error", err)
 			return nil, err
 		}
 	case *sdkv2_v4.Signer:
 		hash := sha256.Sum256(payload)
 		if err := signer.SignHTTP(context.TODO(), *s.creds, req, hex.EncodeToString(hash[:]), "appsync", s.region, time.Now()); err != nil {
-			log.Println(err)
+			slog.Error("error signing request", "error", err)
 			return nil, err
 		}
 	default:
@@ -61,7 +61,7 @@ func (s *_signer) signWS(payload []byte) (map[string]string, error) {
 	}
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
-		log.Println(err)
+		slog.Error("error creating request", "error", err)
 		return nil, err
 	}
 
@@ -73,7 +73,7 @@ func (s *_signer) signWS(payload []byte) (map[string]string, error) {
 	case *sdkv1_v4.Signer:
 		_, err = signer.Sign(req, bytes.NewReader(payload), "appsync", s.region, time.Now())
 		if err != nil {
-			log.Println(err)
+			slog.Error("error signing request", "error", err)
 			return nil, err
 		}
 		return map[string]string{
@@ -88,7 +88,7 @@ func (s *_signer) signWS(payload []byte) (map[string]string, error) {
 	case *sdkv2_v4.Signer:
 		hash := sha256.Sum256(payload)
 		if err := signer.SignHTTP(context.TODO(), *s.creds, req, hex.EncodeToString(hash[:]), "appsync", s.region, time.Now()); err != nil {
-			log.Println(err)
+			slog.Error("error signing request", "error", err)
 			return nil, err
 		}
 

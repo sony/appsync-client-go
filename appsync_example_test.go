@@ -3,7 +3,8 @@ package appsync_test
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/sony/appsync-client-go/internal/appsynctest"
@@ -22,12 +23,14 @@ func ExampleClient_Post_query() {
 		Query: query,
 	})
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("unable to post query", "error", err)
+		os.Exit(1)
 	}
 
 	data := new(string)
 	if err := response.DataAs(data); err != nil {
-		log.Fatalln(err, response)
+		slog.Error("unable to process data", "error", err, "response", response)
+		os.Exit(1)
 	}
 	fmt.Println(*data)
 
@@ -47,12 +50,14 @@ func ExampleClient_Post_mutation() {
 		Variables: &variables,
 	})
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("unable to post mutation", "error", err)
+		os.Exit(1)
 	}
 
 	data := new(string)
 	if err := response.DataAs(data); err != nil {
-		log.Fatalln(err, response)
+		slog.Error("unable to process data", "error", err, "response", response)
+		os.Exit(1)
 	}
 	fmt.Println(*data)
 
@@ -70,22 +75,27 @@ func ExampleClient_mqtt_subscription() {
 		Query: subscription,
 	})
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("unable to post subscription", "error", err)
+		os.Exit(1)
 	}
 
 	ext, err := appsync.NewExtensions(response)
 	if err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to process extensions", "error", err)
+		os.Exit(1)
 	}
 
 	ch := make(chan *graphql.Response)
 	subscriber := appsync.NewSubscriber(*ext,
 		func(r *graphql.Response) { ch <- r },
-		func(err error) { log.Println(err) },
+		func(err error) {
+			slog.Warn("unable to create new subscriber", "error", err)
+		},
 	)
 
 	if err := subscriber.Start(); err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to start subscriber", "error", err)
+		os.Exit(1)
 	}
 	defer subscriber.Stop()
 
@@ -96,13 +106,15 @@ func ExampleClient_mqtt_subscription() {
 		Variables: &variables,
 	})
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("unable to post mutation", "error", err)
+		os.Exit(1)
 	}
 
 	response = <-ch
 	data := new(string)
 	if err := response.DataAs(data); err != nil {
-		log.Fatalln(err, response)
+		slog.Error("unable to process data", "error", err, "response", response)
+		os.Exit(1)
 	}
 	fmt.Println(*data)
 
@@ -124,11 +136,14 @@ func ExampleClient_graphqlws_subscription() {
 			Query: subscription,
 		},
 		func(r *graphql.Response) { ch <- r },
-		func(err error) { log.Println(err) },
+		func(err error) {
+			slog.Warn("unable to create new pure websocket subscriber  ", "error", err)
+		},
 	)
 
 	if err := subscriber.Start(); err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to start subscriber", "error", err)
+		os.Exit(1)
 	}
 	defer subscriber.Stop()
 
@@ -139,13 +154,15 @@ func ExampleClient_graphqlws_subscription() {
 		Variables: &variables,
 	})
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("unable to post mutation", "error", err)
+		os.Exit(1)
 	}
 
 	response := <-ch
 	data := new(string)
 	if err := response.DataAs(data); err != nil {
-		log.Fatalln(err, response)
+		slog.Error("unable to process data", "error", err, "response", response)
+		os.Exit(1)
 	}
 	fmt.Println(*data)
 
