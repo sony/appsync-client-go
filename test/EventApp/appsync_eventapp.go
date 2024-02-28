@@ -4,7 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -31,7 +32,14 @@ type subscriber interface {
 }
 
 func main() {
-	log.SetFlags(log.Llongfile)
+
+	handle := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level:     slog.LevelInfo,
+		AddSource: true,
+	})
+
+	slog.SetDefault(slog.New(handle))
+
 	var (
 		region     = flag.String("region", "", "AppSync API region")
 		url        = flag.String("url", "", "AppSync API URL")
@@ -52,11 +60,13 @@ func main() {
 		ctx := context.TODO()
 		cfg, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
-			log.Fatalln(err)
+			slog.Error("unable to load default config", "error", err)
+			os.Exit(1)
 		}
 		creds, err := cfg.Credentials.Retrieve(ctx)
 		if err != nil {
-			log.Fatalln(err)
+			slog.Error("unable to retrieve credentials", "error", err)
+			os.Exit(1)
 		}
 		signer := sdkv2_v4.NewSigner()
 		opt = appsync.WithIAMAuthorizationV2(signer, creds, *region, *url)
@@ -64,10 +74,10 @@ func main() {
 	}
 	client := appsync.NewClient(appsync.NewGraphQLClient(graphql.NewClient(*url)), opt)
 
-	log.Println("mutation createEvent()")
+	slog.Info("mutation createEvent()")
 	event := createEvent(client)
 
-	log.Println("subscription subscribeToEventComments()")
+	slog.Info("subscription subscribeToEventComments()")
 	ch := make(chan *graphql.Response)
 	defer close(ch)
 	var s subscriber
@@ -77,23 +87,26 @@ func main() {
 	case "graphql-ws":
 		s = wsSubscribeToEventComments(*url, sOpt, event, ch)
 	default:
-		log.Fatalln("unsupported protocol: " + *protocol)
+		slog.Error("unsupported protocol", "protocol", *protocol)
+		os.Exit(1)
 	}
 	if err := s.Start(); err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to start subscriber", "error", err)
+		os.Exit(1)
 	}
 	defer s.Stop()
 
-	log.Println("mutation commentOnEvent()")
+	slog.Info("mutation commentOnEvent()")
 	commentOnEvent(client, event)
 	msg, ok := <-ch
 	if !ok {
-		log.Fatal("ch has been closed.")
+		slog.Error("ch has been closed.")
+		os.Exit(1)
 	}
-	log.Println("comment received")
+	slog.Info("comment received")
 	_, _ = pp.Println(msg)
 
-	log.Println("mutation deleteEvent()")
+	slog.Info("mutation deleteEvent()")
 	deleteEvent(client, event)
 }
 
@@ -112,13 +125,15 @@ mutation {
 		Query: mutation,
 	})
 	if err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to create postRequest", "error", err)
+		os.Exit(1)
 	}
 	_, _ = pp.Println(res)
 
 	ev := new(event)
 	if err := res.DataAs(ev); err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to process event", "error", err)
+		os.Exit(1)
 	}
 	return ev
 }
@@ -133,23 +148,28 @@ subscription {
 		createdAt
 	}
 }`, e.ID)
-	subreq := graphql.PostRequest{
+	subReq := graphql.PostRequest{
 		Query: subscription,
 	}
-	res, err := c.Post(subreq)
+	res, err := c.Post(subReq)
 	if err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to subscribe", "error", err)
+		os.Exit(1)
 	}
 	_, _ = pp.Println(res)
 
 	ext, err := appsync.NewExtensions(res)
 	if err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to process extensions", "error", err)
+		os.Exit(1)
 	}
 
 	return appsync.NewSubscriber(*ext,
 		func(r *graphql.Response) { ch <- r },
-		func(err error) { log.Println(err) })
+		func(err error) {
+			slog.Error("unable to create new subscriber", "error", err)
+			os.Exit(1)
+		})
 
 }
 
@@ -169,7 +189,10 @@ subscription {
 	realtime := strings.Replace(strings.Replace(url, "https", "wss", 1), "appsync-api", "appsync-realtime-api", 1)
 	return appsync.NewPureWebSocketSubscriber(realtime, subreq,
 		func(r *graphql.Response) { ch <- r },
-		func(err error) { log.Println(err) },
+		func(err error) {
+			slog.Error("unable to create new prue websocket subscriber", "error", err)
+			os.Exit(1)
+		},
 		opt,
 	)
 }
@@ -188,7 +211,8 @@ mutation {
 		Query: mutation,
 	})
 	if err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to comment on event", "error", err)
+		os.Exit(1)
 	}
 	_, _ = pp.Println(res)
 }
@@ -208,7 +232,8 @@ mutation {
 		Query: mutation,
 	})
 	if err != nil {
-		log.Fatalln(err)
+		slog.Error("unable to delete event", "error", err)
+		os.Exit(1)
 	}
 	_, _ = pp.Println(res)
 }

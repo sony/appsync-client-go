@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -69,13 +69,13 @@ func (c *Client) Post(header http.Header, request PostRequest) (*Response, error
 func (c *Client) PostAsync(header http.Header, request PostRequest, callback func(*Response, error)) (context.CancelFunc, error) {
 	jsonBytes, err := json.Marshal(request)
 	if err != nil {
-		log.Println(err)
+		slog.Error("unable to marshal request", "error", err, "request", request)
 		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.endpoint, bytes.NewBuffer(jsonBytes))
 	if err != nil {
-		log.Println(err)
+		slog.Error("unable to create request", "error", err)
 		return nil, err
 	}
 	req.Header = merge(req.Header, merge(c.header, header))
@@ -93,7 +93,7 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 		op := func() error {
 			r, err := c.http.Do(req)
 			if err != nil {
-				log.Println(err)
+				slog.Warn("unable to send request", "error", err, "request", request)
 				if err.(*url.Error).Timeout() {
 					c.http.CloseIdleConnections()
 				}
@@ -101,21 +101,21 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 			}
 			defer func() {
 				if err := r.Body.Close(); err != nil {
-					log.Println(err)
+					slog.Error("unable to close response body", "error", err, "request", request)
 				}
 			}()
 
 			if r.StatusCode != http.StatusOK {
 				httpErr := httpStatusError{StatusCode: r.StatusCode}
 				if httpErr.shouldRetry() {
-					log.Println(httpErr)
+					slog.Error("unable to send request", "error", httpErr, "request", request)
 					return httpErr
 				}
 				return backoff.Permanent(httpErr)
 			}
 
 			if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
-				log.Println(err)
+				slog.Error("unable to decode response", "error", err, "request", request)
 				return backoff.Permanent(err)
 			}
 			response.StatusCode = &r.StatusCode

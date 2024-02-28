@@ -3,7 +3,7 @@ package appsync
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -45,12 +45,12 @@ func (c *Client) setupHeaders(request graphql.PostRequest) (http.Header, error) 
 
 	jsonBytes, err := json.Marshal(request)
 	if err != nil {
-		log.Println(err)
+		slog.Error("unable to marshal request", "error", err, "request", request)
 		return nil, err
 	}
 	h, err := c.signer.signHTTP(jsonBytes)
 	if err != nil {
-		log.Println(err)
+		slog.Error("unable to sign request", "error", err, "request", request)
 		return nil, err
 	}
 	for k, vv := range h {
@@ -66,7 +66,7 @@ func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 	defer c.sleepIfNeeded(request)
 	header, err := c.setupHeaders(request)
 	if err != nil {
-		log.Println(err)
+		slog.Error("unable to setup headers", "error", err, "request", request)
 		return nil, err
 	}
 	return c.graphQLAPI.Post(header, request)
@@ -76,7 +76,7 @@ func (c *Client) Post(request graphql.PostRequest) (*graphql.Response, error) {
 func (c *Client) PostAsync(request graphql.PostRequest, callback func(*graphql.Response, error)) (context.CancelFunc, error) {
 	header, err := c.setupHeaders(request)
 	if err != nil {
-		log.Println(err)
+		slog.Error("unable to setup headers", "error", err, "request", request)
 		return nil, err
 	}
 	cb := func(g *graphql.Response, err error) {

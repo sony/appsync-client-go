@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -94,6 +94,7 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 	onReceive func(response *graphql.Response),
 	onConnectionLost func(err error),
 	opts ...PureWebSocketSubscriberOption) *PureWebSocketSubscriber {
+	slog.Debug("creating new pure websocket subscriber", "realtimeEndpoint", realtimeEndpoint, "request", request)
 	ctx, cancel := context.WithCancel(context.Background())
 	p := PureWebSocketSubscriber{
 		realtimeEndpoint: realtimeEndpoint,
@@ -109,7 +110,9 @@ func NewPureWebSocketSubscriber(realtimeEndpoint string, request graphql.PostReq
 }
 
 func (p *PureWebSocketSubscriber) setupHeaders(payload []byte) (map[string]string, error) {
+	slog.Debug("setting up headers", "payload", string(payload))
 	if p.sigv4 == nil {
+		slog.Debug("no sigV4")
 		headers := map[string]string{}
 		for k := range p.header {
 			headers[k] = p.header.Get(k)
@@ -117,9 +120,10 @@ func (p *PureWebSocketSubscriber) setupHeaders(payload []byte) (map[string]strin
 		return headers, nil
 	}
 
+	slog.Debug("signing ws headers", "payload", string(payload))
 	headers, err := p.sigv4.signWS(payload)
 	if err != nil {
-		log.Println(err)
+		slog.Error("error signing WS headers", "error", err)
 		return nil, err
 	}
 
@@ -131,36 +135,36 @@ func (p *PureWebSocketSubscriber) Start() error {
 	bpayload := []byte("{}")
 	header, err := p.setupHeaders(bpayload)
 	if err != nil {
-		log.Println(err)
+		slog.Error("error setting up headers", "error", err)
 		return err
 	}
 	bheader, err := json.Marshal(header)
 	if err != nil {
-		log.Println(err)
+		slog.Error("error marshalling headers during Start", "error", err, "header", header)
 		return err
 	}
 	if err := p.op.connect(p.realtimeEndpoint, bheader, bpayload); err != nil {
-		log.Println(err)
+		slog.ErrorContext(p.op.ctx, "error connecting to websocket", "error", err, "realtimeEndpoint", p.realtimeEndpoint, "header", bheader, "payload", bpayload)
 		return err
 	}
 
 	if err := p.op.connectionInit(); err != nil {
-		log.Println(err)
+		slog.ErrorContext(p.op.ctx, "error initializing connection", "error", err)
 		return err
 	}
 
 	brequest, err := json.Marshal(p.request)
 	if err != nil {
-		log.Println(err)
+		slog.ErrorContext(p.op.ctx, "error marshalling request", "error", err, "request", p.request)
 		return err
 	}
 	authz, err := p.setupHeaders(brequest)
 	if err != nil {
-		log.Println(err)
+		slog.ErrorContext(p.op.ctx, "error setting up headers", "error", err)
 		return err
 	}
 	if err := p.op.start(brequest, authz); err != nil {
-		log.Println(err)
+		slog.ErrorContext(p.op.ctx, "error starting subscription", "error", err)
 		return err
 	}
 
@@ -206,7 +210,7 @@ func (r *realtimeWebSocketOperation) readLoop() {
 	defer close(r.completeCh)
 
 	if err := r.ws.SetReadDeadline(time.Now().Add(defaultTimeout)); err != nil {
-		log.Println(err)
+		slog.Error("error setting read deadline", "error", err)
 		return
 	}
 	for {
@@ -221,22 +225,27 @@ func (r *realtimeWebSocketOperation) readLoop() {
 
 		_, payload, err := r.ws.ReadMessage()
 		if err != nil {
-			log.Println(err)
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				slog.Warn("connection timeout")
 				r.onConnectionLost(err)
+				return
 			}
+
+			slog.ErrorContext(r.ctx, "error reading message", "error", err, "payload", string(payload))
 			return
 		}
 
 		msg := new(message)
 		if err := json.Unmarshal(payload, msg); err != nil {
-			log.Println(err)
+			slog.ErrorContext(r.ctx, "error unmarshalling message", "error", err, "payload", string(payload))
 			return
 		}
 
 		handler, ok := handlers[msg.Type]
+		slog.Debug("msg", "payload", string(payload), "ok", ok)
 		if !ok {
-			log.Println("invalid message received: " + msg.Type)
+			slog.Warn("invalid message received", "msgType", msg.Type)
 			continue
 		}
 		if handler(payload) {
@@ -257,13 +266,13 @@ func (r *realtimeWebSocketOperation) connect(realtimeEndpoint string, header, pa
 	if err := backoff.Retry(func() error {
 		ws, _, err := websocket.DefaultDialer.DialContext(r.ctx, endpoint, http.Header{"sec-websocket-protocol": []string{"graphql-ws"}})
 		if err != nil {
-			log.Print(err)
+			slog.Error("error connecting to websocket", "error", err)
 			return err
 		}
 		r.ws = ws
 		return nil
 	}, backoff.WithContext(backoff.NewExponentialBackOff(), r.ctx)); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error connecting to websocket", "error", err)
 		return err
 	}
 
@@ -278,7 +287,7 @@ func (r *realtimeWebSocketOperation) connect(realtimeEndpoint string, header, pa
 func (r *realtimeWebSocketOperation) onConnected(payload []byte) bool {
 	connack := new(connectionAckMessage)
 	if err := json.Unmarshal(payload, connack); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error unmarshalling connection_ack", "error", err)
 		return true
 	}
 	r.connackCh <- *connack
@@ -292,11 +301,11 @@ func (r *realtimeWebSocketOperation) connectionInit() error {
 
 	init, err := json.Marshal(connectionInitMsg)
 	if err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error marshalling connection_init", "error", err)
 		return err
 	}
 	if err := r.ws.WriteMessage(websocket.TextMessage, init); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error writing connection_init", "error", err)
 		return err
 	}
 	connack, ok := <-r.connackCh
@@ -314,7 +323,7 @@ func (r *realtimeWebSocketOperation) onKeepAlive([]byte) bool {
 		timeout = r.connectionTimeout
 	}
 	if err := r.ws.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error setting read deadline", "error", err)
 		return true
 	}
 	return false
@@ -338,17 +347,19 @@ func (r *realtimeWebSocketOperation) start(request []byte, authorization map[str
 
 	b, err := json.Marshal(start)
 	if err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error marshalling start", "error", err)
 		return err
 	}
 	if err := r.ws.WriteMessage(websocket.TextMessage, b); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error writing start", "error", err)
 	}
 	startack, ok := <-r.startackCh
 	if !ok {
 		return errors.New("subscription registration failed")
 	}
+
 	r.subscriptionID = startack.ID
+	slog.Debug("subscriptionID", "id", r.subscriptionID)
 
 	return nil
 }
@@ -356,7 +367,7 @@ func (r *realtimeWebSocketOperation) start(request []byte, authorization map[str
 func (r *realtimeWebSocketOperation) onStarted(payload []byte) bool {
 	startack := new(startAckMessage)
 	if err := json.Unmarshal(payload, startack); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error unmarshalling start_ack", "error", err)
 		return true
 	}
 	r.startackCh <- *startack
@@ -366,7 +377,7 @@ func (r *realtimeWebSocketOperation) onStarted(payload []byte) bool {
 func (r *realtimeWebSocketOperation) onData(payload []byte) bool {
 	data := new(processingDataMessage)
 	if err := json.Unmarshal(payload, data); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error unmarshalling onData payload", "error", err)
 		return true
 	}
 	r.onReceive(&graphql.Response{
@@ -383,15 +394,15 @@ func (r *realtimeWebSocketOperation) stop() {
 	stop := stopMessage{message{"stop"}, r.subscriptionID}
 	b, err := json.Marshal(stop)
 	if err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error marshalling stop", "error", err)
 		return
 	}
 	if err := r.ws.WriteMessage(websocket.TextMessage, b); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error writing stop", "error", err)
 		return
 	}
 	if _, ok := <-r.completeCh; !ok {
-		log.Println("unsubscribe failed")
+		slog.Warn("subscription stop failed")
 	}
 	r.subscriptionID = ""
 }
@@ -399,7 +410,7 @@ func (r *realtimeWebSocketOperation) stop() {
 func (r *realtimeWebSocketOperation) onStopped(payload []byte) bool {
 	complete := new(completeMessage)
 	if err := json.Unmarshal(payload, complete); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error unmarshalling onStopped complete msg", "error", err, "payload", string(payload))
 		return true
 	}
 	r.completeCh <- *complete
@@ -412,7 +423,7 @@ func (r *realtimeWebSocketOperation) disconnect() {
 	}
 
 	if err := r.ws.Close(); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error closing websocket", "error", err)
 	}
 	r.connectionTimeout = 0
 	r.ws = nil
@@ -421,7 +432,7 @@ func (r *realtimeWebSocketOperation) disconnect() {
 func (r *realtimeWebSocketOperation) onError(payload []byte) bool {
 	em := new(errorMessage)
 	if err := json.Unmarshal(payload, em); err != nil {
-		log.Println(err)
+		slog.ErrorContext(r.ctx, "error unmarshalling onError payload", "error", err, "payload", string(payload))
 		return true
 	}
 	errors := make([]interface{}, len(em.Payload.Errors))

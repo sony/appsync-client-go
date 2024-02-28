@@ -20,7 +20,7 @@ func (r *Response) DataAs(v interface{}) error {
 		return fmt.Errorf("data is invalid")
 	}
 	if len(m) != 1 {
-		return fmt.Errorf("the data is not exist")
+		return fmt.Errorf("the data does not exist")
 	}
 	for _, value := range m {
 		if b, err := json.Marshal(value); err == nil {

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 
@@ -88,15 +88,15 @@ func (m *mqttPublisher) Write(payload []byte) (int, error) {
 			for s := range m.mqttSessions {
 				writer, err := s.NextWriter(websocket.BinaryMessage)
 				if err != nil {
-					log.Println(err)
+					slog.Error("unable to get next writer", "error", err)
 					continue
 				}
 				if err := pub.Write(writer); err != nil {
-					log.Println(err)
+					slog.Error("unable to write packet", "error", err)
 					continue
 				}
 				if err := writer.Close(); err != nil {
-					log.Println(err)
+					slog.Error("unable to close writer", "error", err)
 					continue
 				}
 			}
@@ -107,7 +107,7 @@ func (m *mqttPublisher) Write(payload []byte) (int, error) {
 			for s := range m.grapqhWsSessions {
 				data := json.RawMessage(fmt.Sprintf(gqlwsdatafmt, "id", string(payload)))
 				if err := s.WriteJSON(data); err != nil {
-					log.Println(err)
+					slog.Warn("unable to write json", "error", err)
 					continue
 				}
 			}
@@ -140,20 +140,20 @@ func (e *echoResolver) SubscribeToEcho() string {
 func mqttWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn), onDisconnected func(ws *websocket.Conn)) {
 	defer func() {
 		if err := ws.Close(); err != nil {
-			log.Println(err)
+			slog.Error("unable to close websocket", "error", err)
 		}
 	}()
 
 	for {
 		mt, r, err := ws.NextReader()
 		if err != nil {
-			log.Println(err)
+			slog.Error("unable to get next reader", "error", err)
 			return
 		}
 
 		cp, err := packets.ReadPacket(r)
 		if err != nil {
-			log.Println(err)
+			slog.Error("unable to read packet", "error", err)
 			return
 		}
 
@@ -178,15 +178,15 @@ func mqttWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn), onD
 
 		writer, err := ws.NextWriter(mt)
 		if err != nil {
-			log.Println(err)
+			slog.Error("unable to get next writer", "error", err)
 			return
 		}
 		if err := ack.Write(writer); err != nil {
-			log.Println(err)
+			slog.Error("unable to write packet", "error", err)
 			return
 		}
 		if err := writer.Close(); err != nil {
-			log.Println(err)
+			slog.Error("unable to close writer", "error", err)
 			return
 		}
 	}
@@ -195,7 +195,7 @@ func mqttWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn), onD
 func graphQLWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn), onDisconnected func(ws *websocket.Conn)) {
 	defer func() {
 		if err := ws.Close(); err != nil {
-			log.Println(err)
+			slog.Error("unable to close websocket", "error", err)
 		}
 	}()
 
@@ -217,7 +217,7 @@ func graphQLWsSession(ws *websocket.Conn, onConnected func(ws *websocket.Conn), 
 			onDisconnected(ws)
 		}
 		if err := ws.WriteJSON(ack); err != nil {
-			log.Println(err)
+			slog.Error("unable to write json", "error", err)
 			return
 		}
 	}
@@ -260,12 +260,12 @@ func newSubscriptionHandlerFunc() http.HandlerFunc {
 		resp := graphql.Response{Extensions: &ext}
 		b, err := json.Marshal(resp)
 		if err != nil {
-			log.Println(err)
+			slog.Warn("unable to marshal response", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if _, err = w.Write(b); err != nil {
-			log.Println(err)
+			slog.Warn("unable to write response", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -287,6 +287,7 @@ func newMqttWsHandlerFunc(onConnected func(ws *websocket.Conn), onDisconnected f
 	return func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
+			slog.Warn("unable to upgrade websocket", "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 		go mqttWsSession(ws, onConnected, onDisconnected)
@@ -301,6 +302,7 @@ func newGraphQLWsHandlerFunc(onConnected func(ws *websocket.Conn), onDisconnecte
 	return func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
+			slog.Warn("unable to upgrade websocket", "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 		go graphQLWsSession(ws, onConnected, onDisconnected)
@@ -324,14 +326,14 @@ func newAppSyncEchoHandlerFunc(initialMessage string) http.HandlerFunc {
 		func(ws *websocket.Conn) { delete(grapqhWsSessions, ws) },
 	)
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			log.Println(err)
+			slog.Warn("unable to read body", "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		// Reset
-		r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+		r.Body = io.NopCloser(bytes.NewBuffer(body))
 
 		if isMqttWs(r) {
 			mqttws.ServeHTTP(w, r)
@@ -345,7 +347,7 @@ func newAppSyncEchoHandlerFunc(initialMessage string) http.HandlerFunc {
 
 		req := new(graphql.PostRequest)
 		if err := json.Unmarshal(body, req); err != nil {
-			log.Println(err)
+			slog.Warn("unable to unmarshal request", "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -362,7 +364,7 @@ func newAppSyncEchoHandlerFunc(initialMessage string) http.HandlerFunc {
 			subscription.ServeHTTP(w, r)
 			return
 		}
-
+		slog.Warn("unknown request")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 }

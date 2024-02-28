@@ -2,7 +2,7 @@ package appsync
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -153,7 +153,7 @@ func TestPureWebSocketSubscriber_AbortStopOnReadMessage(t *testing.T) {
 func pureWebSocketSession(ws *websocket.Conn, conn_ack_delay, start_ack_delay, complete_delay time.Duration) {
 	defer func() {
 		if err := ws.Close(); err != nil {
-			log.Println(err)
+			slog.Error("unable to close websocket", "error", err)
 		}
 	}()
 
@@ -202,25 +202,25 @@ func pureWebSocketSession(ws *websocket.Conn, conn_ack_delay, start_ack_delay, c
 	for {
 		_, payload, err := ws.ReadMessage()
 		if err != nil {
-			log.Println(err)
+			slog.Error("unable to read message from websocket", "error", err)
 			return
 		}
 
 		msg := new(message)
 		if err := json.Unmarshal(payload, msg); err != nil {
-			log.Println(err)
+			slog.Error("unable to unmarshal message", "error", err, "message", string(payload))
 			return
 		}
 
 		handler, ok := handlers[msg.Type]
 		if !ok {
-			log.Println("invalid message received: " + msg.Type)
+			slog.Error("invalid message received", "msgType", msg.Type)
 			continue
 		}
 
 		out, finish := handler(payload)
 		if err := ws.WriteMessage(websocket.TextMessage, out); err != nil {
-			log.Println(err)
+			slog.Error("unable to write message to websocket", "error", err, "message", string(out))
 			return
 		}
 		if finish {

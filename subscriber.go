@@ -2,7 +2,7 @@ package appsync
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -30,23 +30,25 @@ const (
 
 // NewSubscriber returns a new Subscriber instance.
 func NewSubscriber(extensions Extensions, callback func(response *graphql.Response), onConnectionLost func(err error)) *Subscriber {
+	slog.Debug("creating new subscriber", "extensions", extensions)
 	if len(extensions.Subscription.MqttConnections) == 0 {
-		log.Printf("There is no mqtt connections.\n%+v\n", extensions)
+		slog.Warn("There is no mqtt connections.", "extensions", extensions)
 		return nil
 	}
 
 	topic := func() string {
 		if len(extensions.Subscription.NewSubscriptions) > 1 {
-			log.Printf("Multiple subscriptions are currently not supported.\n%+v\n", extensions)
+			slog.Warn("Multiple subscriptions are currently not supported.", "extensions", extensions)
 			return ""
 		}
 		for _, v := range extensions.Subscription.NewSubscriptions {
+			slog.Debug("topics", "topic", v.Topic)
 			return v.Topic
 		}
 		return ""
 	}()
 	if len(topic) == 0 {
-		log.Printf("There are no new subscriptions.\n%+v\n", extensions)
+		slog.Warn("There are no new subscriptions.", "extensions", extensions)
 		return nil
 	}
 
@@ -61,7 +63,7 @@ func NewSubscriber(extensions Extensions, callback func(response *graphql.Respon
 		return -1
 	}()
 	if index < 0 {
-		log.Printf("There are no new subscriptions.\n%+v\n", extensions)
+		slog.Warn("There are no new subscriptions.", "extensions", extensions)
 		return nil
 	}
 
@@ -95,6 +97,7 @@ func (r *rwBool) store(b bool) {
 
 // Start starts a new subscription.
 func (s *Subscriber) Start() error {
+	slog.Debug("starting new subscriber", "clientID", s.clientID, "url", s.url, "topic", s.topic)
 	opts := MQTT.NewClientOptions().
 		AddBroker(s.url).
 		SetClientID(s.clientID).
@@ -116,7 +119,7 @@ func (s *Subscriber) Start() error {
 			}
 			r := new(graphql.Response)
 			if err := json.Unmarshal(msg.Payload(), r); err != nil {
-				log.Println(err)
+				slog.Error("unable to unmarshal mqtt message", "error", err, "message", string(msg.Payload()))
 				return
 			}
 			s.callback(r)
@@ -124,6 +127,7 @@ func (s *Subscriber) Start() error {
 
 		subscribe := func() error {
 			if token := c.Subscribe(s.topic, 0, mqttCallback); token.Wait() && token.Error() != nil {
+				slog.Warn("unable to subscribe to topic", "topic", s.topic, "error", token.Error())
 				return token.Error()
 			}
 			s.started.store(true)
@@ -149,6 +153,7 @@ func (s *Subscriber) Start() error {
 	b := backoff.NewExponentialBackOff()
 	b.MaxElapsedTime = 5 * time.Minute
 	if err := backoff.Retry(connect, b); err != nil {
+		slog.Warn("unable to connect to mqtt on retry", "error", err)
 		return err
 	}
 
@@ -157,6 +162,7 @@ func (s *Subscriber) Start() error {
 
 // Stop ends the subscription.
 func (s *Subscriber) Stop() {
+	slog.Debug("stopping subscriber", "topic", s.topic)
 	if s.mqtt == nil {
 		return
 	}
@@ -166,6 +172,6 @@ func (s *Subscriber) Stop() {
 		s.mqtt = nil
 	}()
 	if token := s.mqtt.Unsubscribe(s.topic); token.Wait() && token.Error() != nil {
-		log.Println(token.Error())
+		slog.Warn("error in token", "topic", s.topic, "error", token.Error())
 	}
 }
