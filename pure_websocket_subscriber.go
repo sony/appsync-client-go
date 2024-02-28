@@ -225,12 +225,14 @@ func (r *realtimeWebSocketOperation) readLoop() {
 
 		_, payload, err := r.ws.ReadMessage()
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
 				slog.Warn("connection timeout")
-			} else {
-				slog.ErrorContext(r.ctx, "error reading message", "error", err)
+				r.onConnectionLost(err)
+				return
 			}
-			r.onConnectionLost(err)
+
+			slog.ErrorContext(r.ctx, "error reading message", "error", err, "payload", string(payload))
 			return
 		}
 
