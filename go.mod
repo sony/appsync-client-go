@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.28.7
 	github.com/cenkalti/backoff/v5 v5.0.0
 	github.com/eclipse/paho.mqtt.golang v1.5.0
-	github.com/google/uuid v1.1.1
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/graph-gophers/graphql-go v1.5.0
 	github.com/k0kubun/pp v3.0.1+incompatible
