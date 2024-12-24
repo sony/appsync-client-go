@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
 
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v5"
 )
 
 type httpStatusError struct {
@@ -86,18 +87,15 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 	go func() {
 		defer cancel()
 
-		b := backoff.NewExponentialBackOff()
-		b.MaxElapsedTime = c.maxElapsedTime
-
 		var response Response
-		op := func() error {
+		op := func() (string, error) {
 			r, err := c.http.Do(req)
 			if err != nil {
 				slog.Warn("unable to send request", "error", err, "request", request)
 				if err.(*url.Error).Timeout() {
 					c.http.CloseIdleConnections()
 				}
-				return backoff.Permanent(err)
+				return "", backoff.Permanent(err)
 			}
 			defer func() {
 				if err := r.Body.Close(); err != nil {
@@ -109,25 +107,30 @@ func (c *Client) PostAsync(header http.Header, request PostRequest, callback fun
 				httpErr := httpStatusError{StatusCode: r.StatusCode}
 				if httpErr.shouldRetry() {
 					slog.Error("unable to send request", "error", httpErr, "request", request)
-					return httpErr
+					return "", httpErr
 				}
-				return backoff.Permanent(httpErr)
+				return "", backoff.Permanent(httpErr)
 			}
 
 			if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
 				slog.Error("unable to decode response", "error", err, "request", request)
-				return backoff.Permanent(err)
+				return "", backoff.Permanent(err)
 			}
 			response.StatusCode = &r.StatusCode
 
-			return nil
+			return "", nil
 		}
 
-		switch err := backoff.Retry(op, b).(type) {
-		case nil:
+		_, err := backoff.Retry(ctx, op,
+			backoff.WithBackOff(backoff.NewExponentialBackOff()),
+			backoff.WithMaxElapsedTime(c.maxElapsedTime))
+
+		var httpErr httpStatusError
+		switch {
+		case err == nil:
 			callback(&response, nil)
-		case httpStatusError:
-			callback(&Response{&(err.StatusCode), nil, &[]interface{}{err.Error()}, nil}, nil)
+		case errors.As(err, &httpErr):
+			callback(&Response{&(httpErr.StatusCode), nil, &[]interface{}{httpErr.Error()}, nil}, nil)
 		default:
 			callback(nil, err)
 		}

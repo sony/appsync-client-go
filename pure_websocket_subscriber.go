@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/sony/appsync-client-go/graphql"
@@ -263,15 +263,16 @@ func (r *realtimeWebSocketOperation) connect(realtimeEndpoint string, header, pa
 	b64p := base64.StdEncoding.EncodeToString(payload)
 	endpoint := fmt.Sprintf("%s?header=%s&payload=%s", realtimeEndpoint, b64h, b64p)
 
-	if err := backoff.Retry(func() error {
+	connect := func() (string, error) {
 		ws, _, err := websocket.DefaultDialer.DialContext(r.ctx, endpoint, http.Header{"sec-websocket-protocol": []string{"graphql-ws"}})
 		if err != nil {
 			slog.Error("error connecting to websocket", "error", err)
-			return err
+			return "", err
 		}
 		r.ws = ws
-		return nil
-	}, backoff.WithContext(backoff.NewExponentialBackOff(), r.ctx)); err != nil {
+		return "", nil
+	}
+	if _, err := backoff.Retry(r.ctx, connect, backoff.WithBackOff(backoff.NewExponentialBackOff())); err != nil {
 		slog.ErrorContext(r.ctx, "error connecting to websocket", "error", err)
 		return err
 	}

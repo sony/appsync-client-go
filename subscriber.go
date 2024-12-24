@@ -1,12 +1,13 @@
 package appsync
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
 
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/sony/appsync-client-go/graphql"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -125,34 +126,36 @@ func (s *Subscriber) Start() error {
 			s.callback(r)
 		}
 
-		subscribe := func() error {
+		subscribe := func() (string, error) {
 			if token := c.Subscribe(s.topic, 0, mqttCallback); token.Wait() && token.Error() != nil {
 				slog.Warn("unable to subscribe to topic", "topic", s.topic, "error", token.Error())
-				return token.Error()
+				return "", token.Error()
 			}
 			s.started.store(true)
-			return nil
+			return "", nil
 		}
 
-		// Here be dragons.
-		b := backoff.NewExponentialBackOff()
-		b.MaxElapsedTime = 60 * time.Second
-		ch <- backoff.Retry(subscribe, b)
+		subscribeTimeout := 60 * time.Second
+		_, err := backoff.Retry(context.TODO(), subscribe,
+			backoff.WithBackOff(backoff.NewExponentialBackOff()),
+			backoff.WithMaxElapsedTime(subscribeTimeout))
+		ch <- err
 	}
 
 	mqtt := MQTT.NewClient(opts)
-	connect := func() error {
+	connect := func() (string, error) {
 		if token := mqtt.Connect(); token.Wait() && token.Error() != nil {
-			return token.Error()
+			return "", token.Error()
 		}
 		s.mqtt = mqtt
-		return nil
+		return "", nil
 	}
 
-	// Here be dragons.
-	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 5 * time.Minute
-	if err := backoff.Retry(connect, b); err != nil {
+	connectionTimeout := 5 * time.Minute
+	_, err := backoff.Retry(context.TODO(), connect,
+		backoff.WithBackOff(backoff.NewExponentialBackOff()),
+		backoff.WithMaxElapsedTime(connectionTimeout))
+	if err != nil {
 		slog.Warn("unable to connect to mqtt on retry", "error", err)
 		return err
 	}
