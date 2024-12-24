@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go/aws/session"
 	sdkv1_v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
-	"github.com/k0kubun/pp"
+	"github.com/k0kubun/pp/v3"
 	appsync "github.com/sony/appsync-client-go"
 	"github.com/sony/appsync-client-go/graphql"
 )
