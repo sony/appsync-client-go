@@ -10,13 +10,13 @@ import (
 )
 
 var (
-	statusOK  = http.StatusOK
-	errors    = []interface{}{"error1", "error2"}
-	posttests = []struct {
+	statusOK   = http.StatusOK
+	testErrors = []interface{}{"error1", "error2"}
+	posttests  = []struct {
 		want Response
 	}{
 		{want: Response{&statusOK, "data", nil, nil}},
-		{want: Response{&statusOK, "", &errors, nil}},
+		{want: Response{&statusOK, "", &testErrors, nil}},
 	}
 )
 
@@ -106,11 +106,11 @@ func TestInternalServerError(t *testing.T) {
 	defer server.Close()
 
 	internalServerError := http.StatusInternalServerError
-	errors = []interface{}{http.StatusText(internalServerError)}
+	testErrors = []interface{}{http.StatusText(internalServerError)}
 	want := Response{
 		StatusCode: &internalServerError,
 		Data:       nil,
-		Errors:     &errors,
+		Errors:     &testErrors,
 		Extensions: nil,
 	}
 
@@ -148,11 +148,11 @@ func TestUnauthorizedError(t *testing.T) {
 	defer server.Close()
 
 	unauthorizedError := http.StatusUnauthorized
-	errors = []interface{}{http.StatusText(unauthorizedError)}
+	testErrors = []interface{}{http.StatusText(unauthorizedError)}
 	want := Response{
 		StatusCode: &unauthorizedError,
 		Data:       nil,
-		Errors:     &errors,
+		Errors:     &testErrors,
 		Extensions: nil,
 	}
 
