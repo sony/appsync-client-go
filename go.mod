@@ -1,6 +1,7 @@
 module github.com/sony/appsync-client-go
 
 go 1.23
+toolchain go1.24.1
 
 require (
 	github.com/aws/aws-sdk-go v1.55.5
@@ -26,6 +27,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.3 // indirect
 	github.com/aws/smithy-go v1.22.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 )
